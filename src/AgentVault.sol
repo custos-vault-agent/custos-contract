@@ -12,7 +12,14 @@ import {Status} from "./Types.sol";
 import {IYieldSource} from "./interfaces/IYieldSource.sol";
 import {AgentCannotCallThis, OnlyAgent, OnlyCustosCore, VaultNotActive, YieldWithdrawFailed, ZeroAddress} from
     "./Errors.sol";
-import {FeeMinted, SubscriberDeposited, SubscriberRedeemed, YieldPulled, YieldPushed} from "./Events.sol";
+import {
+    FeeMinted,
+    SeedDeposited,
+    SubscriberDeposited,
+    SubscriberRedeemed,
+    YieldPulled,
+    YieldPushed
+} from "./Events.sol";
 
 /// @notice Satu vault ERC-4626 per agent (spec v1 D13). Immutable setelah deploy —
 ///         bukan proxy, jadi upgrade CustosCore tidak pernah bisa menyentuhnya.
@@ -212,6 +219,21 @@ contract AgentVault is ERC4626, ReentrancyGuard {
 
     function setMarketAllowed(address market, bool allowed) external onlyCustosCore {
         allowedMarkets[market] = allowed;
+    }
+
+    /// @notice Setoran pertama vault, dipanggil sekali oleh CustosCore tepat setelah
+    ///         deploy. Shares dikirim ke `address(1)` (dead address) dan terkunci
+    ///         permanen — inilah pertahanan D15 terhadap ERC-4626 inflation attack,
+    ///         dan sinyal skin-in-the-game creator ke subscriber.
+    /// @dev Dana sudah ditransfer ke vault oleh CustosCore sebelum panggilan ini
+    ///      (pola yang sama seperti v0.1's `creditDeposit`: ukur, jangan percaya
+    ///      klaim pemanggil) — jadi fungsi ini hanya mencatat, tidak menarik apa pun.
+    function seedDeposit(uint128 amount) external onlyCustosCore {
+        uint256 shares = amount; // harga awal 1:1
+        _mint(address(1), shares);
+        // `highWaterMark` sudah 1e18 sejak constructor — tidak perlu diset ulang di sini.
+        _pushToYield();
+        emit SeedDeposited(address(this), creator, amount, shares, address(1));
     }
 
     /* -------------------------- internal: period ---------------------------- */
