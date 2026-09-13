@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {AgentRegistry} from "./modules/AgentRegistry.sol";
+import {NansenAttestation} from "./modules/NansenAttestation.sol";
 
 /// @title Custos — registry dan vault factory untuk trading lintas rantai di Kuru.
 ///
@@ -9,7 +10,7 @@ import {AgentRegistry} from "./modules/AgentRegistry.sol";
 ///      dana dan trading tidak lagi hidup di sini sama sekali — setiap agent punya
 ///      `AgentVault` sendiri, immutable, di-deploy lewat `VaultFactory`. CustosCore
 ///      yang tersisa murni registry + otorisasi + Nansen attestation.
-contract CustosCore is AgentRegistry {
+contract CustosCore is NansenAttestation, AgentRegistry {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();

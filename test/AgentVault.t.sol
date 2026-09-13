@@ -30,6 +30,8 @@ contract AgentVaultTest is Test {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         mon = new MockERC20("Monad", "MON", 18);
         market = new MockMarket(address(mon), address(usdc), 2 * USDC, 1 * MON);
+        mon.mint(address(market), 1_000_000 * MON);
+        usdc.mint(address(market), 1_000_000 * USDC);
 
         vault = new AgentVault(
             keccak256("agent-1"),
@@ -42,7 +44,8 @@ contract AgentVaultTest is Test {
             1000, // feeRate 10%
             2000, // maxDrawdownBps 20%
             7000, // maxUtilizationBps 70%
-            10_000 * uint128(USDC), // allowance
+            1_000_000 * uint128(USDC), // allowance — large enough that reserve-ratio
+            // tests exercise maxUtilizationBps, not this period cap
             30 days, // periodLength
             "Custos: agent-1",
             "cst-a1"
@@ -271,8 +274,9 @@ contract AgentVaultTest is Test {
         // The 30% reserve (30,000 USDC) was never touched by the swap — a redeem of
         // up to that share of the vault must succeed without needing anything back
         // from the agent's position.
+        uint256 aliceShares = vault.balanceOf(alice) * 3 / 10;
         vm.prank(alice);
-        uint256 assets = vault.redeem(vault.balanceOf(alice) * 3 / 10, alice, alice);
+        uint256 assets = vault.redeem(aliceShares, alice, alice);
         assertGt(assets, 0);
     }
 
@@ -459,7 +463,7 @@ contract AgentVaultTest is Test {
         vm.prank(agentWallet);
         try v.executeSwap(address(market), true, uint128(buyAmount), 0, 0) {
             uint256 price = (v.totalAssets() * 1e18) / v.totalSupply();
-            uint256 threshold = (1e18 * (10_000 - drawdownBps)) / 10_000;
+            uint256 threshold = (1e18 * (10_000 - uint256(drawdownBps))) / 10_000;
             if (price < threshold) {
                 assertEq(uint8(v.status()), uint8(Status.Paused));
             } else {

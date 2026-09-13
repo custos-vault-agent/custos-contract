@@ -200,17 +200,21 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     /// @dev D20: agent wallet balance di share token harus selalu nol. `transfer`
     ///      diblokir untuk agent supaya poin ini benar bahkan kalau suatu saat agent
     ///      menerima share lewat jalur lain (mis. airdrop paksa dari luar sistem).
-    function transfer(address to, uint256 amount) public override returns (bool) {
+    function transfer(address to, uint256 amount) public override(ERC20, IERC20) returns (bool) {
         if (msg.sender == agent) revert AgentCannotCallThis();
         return super.transfer(to, amount);
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(address spender, uint256 amount) public override(ERC20, IERC20) returns (bool) {
         if (msg.sender == agent) revert AgentCannotCallThis();
         return super.approve(spender, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        override(ERC20, IERC20)
+        returns (bool)
+    {
         if (msg.sender == agent) revert AgentCannotCallThis();
         return super.transferFrom(from, to, amount);
     }
@@ -414,8 +418,14 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         uint256 feeAssets = (totalProfit * feeRate) / 10_000;
         uint256 feeShares = convertToShares(feeAssets);
 
-        if (feeShares > 0) _mint(creator, feeShares);
-        highWaterMark = (totalAssets() * 1e18) / totalSupply();
+        // Kalau feeAssets membulatkan ke 0 share, jangan majukan highWaterMark —
+        // kalau tidak, dust rounding dari redeem kecil berulang bisa mendorong HWM
+        // naik tanpa fee yang benar-benar tertagih, membuat profit sekecil apa pun
+        // jadi tidak bisa dikenai fee lagi selamanya.
+        if (feeShares > 0) {
+            _mint(creator, feeShares);
+            highWaterMark = (totalAssets() * 1e18) / totalSupply();
+        }
         emit FeeMinted(address(this), creator, feeShares, feeAssets, highWaterMark);
     }
 

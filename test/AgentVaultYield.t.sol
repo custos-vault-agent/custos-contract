@@ -81,8 +81,9 @@ contract AgentVaultYieldTest is Test {
         vm.prank(alice);
         vault.deposit(1_000 * USDC, alice); // fully in yield, idle == 0
 
+        uint256 aliceShares = vault.balanceOf(alice);
         vm.prank(alice);
-        uint256 assets = vault.redeem(vault.balanceOf(alice), alice, alice);
+        uint256 assets = vault.redeem(aliceShares, alice, alice);
 
         assertEq(assets, 1_000 * USDC);
         assertEq(usdc.balanceOf(alice), 1_000_000 * USDC); // back to starting balance
