@@ -7,7 +7,7 @@ import {AgentVault} from "../src/AgentVault.sol";
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {AgentRecord, Status} from "../src/Types.sol";
-import {SeedTooSmall, SelfDelegation, WalletAlreadyBound, ZeroAddress} from "../src/Errors.sol";
+import {NotCreator, SeedTooSmall, SelfDelegation, WalletAlreadyBound, ZeroAddress} from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
 
@@ -138,5 +138,56 @@ contract AgentRegistryTest is Test {
         custos.revokeAgent(id);
 
         assertEq(uint8(custos.getAgent(id).status), uint8(Status.Revoked));
+    }
+
+    function test_setAllowanceForwardsToVault() public {
+        vm.prank(alice);
+        (bytes32 id, address vault) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(alice);
+        custos.setAllowance(id, 9_000 * uint128(USDC));
+
+        assertEq(AgentVault(vault).allowance(), 9_000 * uint128(USDC));
+    }
+
+    function test_setPeriodForwardsToVault() public {
+        vm.prank(alice);
+        (bytes32 id, address vault) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(alice);
+        custos.setPeriod(id, 7 days);
+
+        assertEq(AgentVault(vault).periodLength(), 7 days);
+    }
+
+    function test_setPublicUpdatesRegistryOnly() public {
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(alice);
+        custos.setPublic(id, false);
+
+        assertFalse(custos.getAgent(id).isPublic);
+    }
+
+    function test_nonCreatorCannotConfigureAgent() public {
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(agentWallet);
+        vm.expectRevert(NotCreator.selector);
+        custos.setAllowance(id, 1);
     }
 }

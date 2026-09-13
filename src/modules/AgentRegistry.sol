@@ -21,7 +21,8 @@ import {
     WalletAlreadyBound,
     ZeroAddress
 } from "../Errors.sol";
-import {AgentRegistered, AgentStatusChanged} from "../Events.sol";
+import {AgentAllowanceChanged, AgentPeriodChanged, AgentPublicChanged, AgentRegistered, AgentStatusChanged} from
+    "../Events.sol";
 
 /// @notice Registry agent. Menggantikan `AgentCore` v0.1 — metadata agent hidup di
 ///         sini, tapi dana dan trading hidup di `AgentVault` masing-masing.
@@ -117,6 +118,26 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
     ///         publik bersifat append-only dan ikatan wallet tetap dipertahankan.
     function revokeAgent(bytes32 id) external {
         _setStatus(id, Status.Revoked);
+    }
+
+    function setAllowance(bytes32 id, uint128 newAllowance) external {
+        AgentRecord storage a = _ownedAgent(id);
+        emit AgentAllowanceChanged(id, AgentVault(a.vault).allowance(), newAllowance);
+        AgentVault(a.vault).setAllowance(newAllowance);
+    }
+
+    function setPeriod(bytes32 id, uint32 periodLength) external {
+        AgentRecord storage a = _ownedAgent(id);
+        emit AgentPeriodChanged(id, AgentVault(a.vault).periodLength(), periodLength);
+        AgentVault(a.vault).setPeriod(periodLength);
+    }
+
+    /// @notice D16: hanya mempengaruhi visibilitas di marketplace. On-chain tetap
+    ///         permissionless — `deposit` di vault tidak pernah dijaga `isPublic`.
+    function setPublic(bytes32 id, bool isPublic) external {
+        AgentRecord storage a = _ownedAgent(id);
+        a.isPublic = isPublic;
+        emit AgentPublicChanged(id, isPublic);
     }
 
     /* ------------------------------ internal ----------------------------- */
