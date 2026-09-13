@@ -354,4 +354,120 @@ contract AgentVaultTest is Test {
         // feeRate is 1000 bps (10%) in this fixture's constructor (Task 5's setUp).
         assertLe(feeAssets, (profitAmount * 1000) / 10_000 + 2); // +2 for rounding slack
     }
+
+    /* -------------------------------- Task 12 -------------------------------- */
+
+    function test_circuitBreakerTriggersAtDrawdown() public {
+        // maxDrawdownBps = 2000 (20%) in this fixture's constructor (Task 5).
+        _allowMarket();
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+
+        // Spending 2,500 of 10,000 USDC on MON drops totalAssets to 7,500 — a 25%
+        // drawdown, past the 20% threshold.
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(2_500 * USDC), 0, 0);
+
+        assertEq(uint8(vault.status()), uint8(Status.Paused));
+    }
+
+    function test_circuitBreakerDoesNotTriggerAboveThreshold() public {
+        _allowMarket();
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(1_000 * USDC), 0, 0); // 10% drawdown
+
+        assertEq(uint8(vault.status()), uint8(Status.Active));
+    }
+
+    function test_circuitBreakerDisabledWhenZero() public {
+        AgentVault noBreaker = new AgentVault(
+            keccak256("agent-no-breaker"), creator, agentWallet, custosCore, address(usdc), address(market),
+            address(0), 1000, 0, 7000, 10_000 * uint128(USDC), 30 days, "Custos: nb", "cst-nb"
+        );
+        vm.prank(custosCore);
+        noBreaker.setMarketAllowed(address(market), true);
+
+        usdc.mint(alice, 10_000 * USDC);
+        vm.prank(alice);
+        usdc.approve(address(noBreaker), type(uint256).max);
+        vm.prank(alice);
+        noBreaker.deposit(10_000 * USDC, alice);
+
+        vm.prank(agentWallet);
+        noBreaker.executeSwap(address(market), true, uint128(7_000 * USDC), 0, 0); // 70% drawdown
+
+        assertEq(uint8(noBreaker.status()), uint8(Status.Active));
+    }
+
+    function test_resumeAfterCircuitBreakerResetsHighWaterMark() public {
+        _allowMarket();
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(2_500 * USDC), 0, 0);
+        assertEq(uint8(vault.status()), uint8(Status.Paused));
+
+        uint256 priceAtPause = (vault.totalAssets() * 1e18) / vault.totalSupply();
+        assertLt(priceAtPause, vault.highWaterMark());
+
+        vm.prank(custosCore);
+        vault.setStatus(Status.Active);
+        assertEq(vault.highWaterMark(), priceAtPause);
+
+        // A swap that would have re-triggered against the OLD high water mark now
+        // succeeds against the reset one.
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(100 * USDC), 0, 0);
+        assertEq(uint8(vault.status()), uint8(Status.Active));
+    }
+
+    function test_subscriberCanRedeemDuringCircuitBreaker() public {
+        _allowMarket();
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(2_500 * USDC), 0, 0);
+
+        vm.prank(alice);
+        uint256 assets = vault.redeem(1_000 * USDC, alice, alice);
+        assertGt(assets, 0);
+    }
+
+    function testFuzz_circuitBreakerThresholdMath(uint16 drawdownBps, uint256 buyAmount) public {
+        drawdownBps = uint16(bound(drawdownBps, 100, 5000));
+        buyAmount = bound(buyAmount, 1 * USDC, 9_000 * USDC);
+
+        AgentVault v = new AgentVault(
+            keccak256(abi.encode("fuzz", drawdownBps, buyAmount)), creator, agentWallet, custosCore,
+            address(usdc), address(market), address(0), 1000, drawdownBps, 9500,
+            100_000 * uint128(USDC), 30 days, "Custos: f", "cst-f"
+        );
+        vm.prank(custosCore);
+        v.setMarketAllowed(address(market), true);
+
+        usdc.mint(alice, 10_000 * USDC);
+        vm.prank(alice);
+        usdc.approve(address(v), type(uint256).max);
+        vm.prank(alice);
+        v.deposit(10_000 * USDC, alice);
+
+        vm.prank(agentWallet);
+        try v.executeSwap(address(market), true, uint128(buyAmount), 0, 0) {
+            uint256 price = (v.totalAssets() * 1e18) / v.totalSupply();
+            uint256 threshold = (1e18 * (10_000 - drawdownBps)) / 10_000;
+            if (price < threshold) {
+                assertEq(uint8(v.status()), uint8(Status.Paused));
+            } else {
+                assertEq(uint8(v.status()), uint8(Status.Active));
+            }
+        } catch {
+            // Reverted for an unrelated reason (allowance/utilization cap) — not
+            // what this fuzz test is checking.
+        }
+    }
 }

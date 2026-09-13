@@ -25,6 +25,7 @@ import {
 } from "./Errors.sol";
 import {
     AgentPeriodRolled,
+    CircuitBreakerTriggered,
     FeeMinted,
     SeedDeposited,
     SubscriberDeposited,
@@ -216,7 +217,16 @@ contract AgentVault is ERC4626, ReentrancyGuard {
 
     /* --------------------------- creator-facing ----------------------------- */
 
+    /// @notice Mengubah status vault. Resume dari Paused ke Active juga mereset
+    ///         `highWaterMark` ke share price saat ini (D21) — satu-satunya cara
+    ///         `highWaterMark` bisa turun, dan hanya lewat panggilan eksplisit ini.
+    ///         Tanpa reset, swap berikutnya langsung memicu breaker lagi karena
+    ///         share price masih di bawah level lama.
     function setStatus(Status newStatus) external onlyCustosCore {
+        if (newStatus == Status.Active && status == Status.Paused) {
+            uint256 supply = totalSupply();
+            highWaterMark = supply == 0 ? 1e18 : (totalAssets() * 1e18) / supply;
+        }
         status = newStatus;
     }
 
@@ -298,7 +308,12 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         usedInPeriod -= (notionalMax - notionalCharged);
 
         _chargeFeeIfProfit();
-        _pushToYield();
+        // Cek dijalankan setelah fee mint, supaya highWaterMark yang dipakai sudah
+        // yang terbaru (D21). Swap yang memicu breaker tetap tereksekusi — dana
+        // sudah bergerak — tapi push-to-yield di-skip: biarkan dana idle supaya
+        // subscriber bisa redeem cepat tanpa menunggu withdraw dari yield source (I11).
+        bool tripped = _checkCircuitBreaker();
+        if (!tripped) _pushToYield();
 
         uint256 supply = totalSupply();
         emit SwapExecuted(
@@ -402,5 +417,23 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         if (feeShares > 0) _mint(creator, feeShares);
         highWaterMark = (totalAssets() * 1e18) / totalSupply();
         emit FeeMinted(address(this), creator, feeShares, feeAssets, highWaterMark);
+    }
+
+    /// @notice Auto-pause saat share price turun melewati `maxDrawdownBps` dari high
+    ///         water mark (D21). `maxDrawdownBps == 0` menonaktifkan pengecekan ini
+    ///         seluruhnya.
+    function _checkCircuitBreaker() internal returns (bool tripped) {
+        if (maxDrawdownBps == 0) return false;
+        uint256 supply = totalSupply();
+        if (supply == 0) return false;
+
+        uint256 currentPrice = (totalAssets() * 1e18) / supply;
+        uint256 threshold = (highWaterMark * (10_000 - maxDrawdownBps)) / 10_000;
+        if (currentPrice < threshold) {
+            status = Status.Paused;
+            emit CircuitBreakerTriggered(address(this), currentPrice, highWaterMark, maxDrawdownBps);
+            return true;
+        }
+        return false;
     }
 }
