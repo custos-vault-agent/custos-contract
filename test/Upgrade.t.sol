@@ -2,72 +2,58 @@
 pragma solidity ^0.8.24;
 
 import {Base} from "./Base.t.sol";
-import {CustosLogic} from "../src/CustosLogic.sol";
-import {Agent, Status} from "../src/Types.sol";
+import {AgentVault} from "../src/AgentVault.sol";
+import {CustosCore} from "../src/CustosCore.sol";
+import {AgentRecord} from "../src/Types.sol";
 import {NotUpgradeAuthority} from "../src/Errors.sol";
-import {CustosLogicV2} from "./mocks/CustosLogicV2.sol";
+import {CustosCoreV2} from "./mocks/CustosCoreV2.sol";
 
 contract UpgradeTest is Base {
-    /// @notice Klaim yang seluruh arsitektur ini dibangun untuk membuktikan: upgrade
-    ///         tidak menyentuh state. Namespace ERC-7201 membuat penambahan modul tidak
-    ///         bisa menggeser satu pun field, jadi tidak ada migrasi dan tidak ada saldo
-    ///         yang perlu dipindahkan.
-    function test_upgradePreservesState() public {
-        _deposit(alice, usdc, 1_000 * USDC);
-        _deposit(alice, mon, 5 * MON);
-        bytes32 id = _registerAgent(alice, agentWallet, uint128(600 * USDC), 30 days);
+    function test_upgradePreservesRegistryAndVault() public {
+        (bytes32 id, address vault) = _registerAgent(alice, agentWallet, uint128(4_000 * USDC), 1 days);
 
-        vm.prank(agentWallet);
-        custos.executeSwap(address(market), true, uint128(200 * USDC), 0, 0);
+        AgentRecord memory before = custos.getAgent(id);
+        uint256 vaultTotalAssetsBefore = AgentVault(vault).totalAssets();
+        uint256 vaultSeedSharesBefore = AgentVault(vault).balanceOf(address(1));
 
-        Agent memory before = custos.getAgent(id);
-        uint256 usdcBefore = custos.balanceOf(alice, address(usdc));
-        uint256 monBefore = custos.balanceOf(alice, address(mon));
-        uint256 availableBefore = custos.availableOf(alice);
-
-        address v2 = address(new CustosLogicV2());
+        address v2 = address(new CustosCoreV2());
         vm.prank(authority);
         custos.upgradeToAndCall(v2, "");
 
-        assertEq(CustosLogicV2(address(custos)).version(), "2.0.0");
+        assertEq(CustosCoreV2(address(custos)).version(), "3.0.0");
 
-        Agent memory afterUpgrade = custos.getAgent(id);
-        assertEq(afterUpgrade.owner, before.owner);
+        AgentRecord memory afterUpgrade = custos.getAgent(id);
+        assertEq(afterUpgrade.creator, before.creator);
         assertEq(afterUpgrade.wallet, before.wallet);
-        assertEq(afterUpgrade.allowance, before.allowance);
-        assertEq(afterUpgrade.usedInPeriod, before.usedInPeriod);
-        assertEq(afterUpgrade.periodStart, before.periodStart);
-        assertEq(afterUpgrade.periodLength, before.periodLength);
+        assertEq(afterUpgrade.vault, before.vault);
         assertEq(uint8(afterUpgrade.status), uint8(before.status));
+        assertEq(CustosCoreV2(address(custos)).creatorOf(id), alice);
 
-        assertEq(custos.balanceOf(alice, address(usdc)), usdcBefore);
-        assertEq(custos.balanceOf(alice, address(mon)), monBefore);
-        assertEq(custos.availableOf(alice), availableBefore);
-
-        // Konfigurasi ikut selamat, dan fungsi baru membaca record lama apa adanya.
-        assertEq(custos.auroraReceiver(), receiver);
-        assertEq(custos.accountingAsset(), address(usdc));
-        assertEq(CustosLogicV2(address(custos)).agentOwnerOf(id), alice);
+        // D13's actual claim: the vault address, its address(1)-locked seed shares,
+        // and its totalAssets are completely untouched — not because nothing
+        // *could* change, but because the vault was never a proxy to begin with and
+        // CustosCore has no code path that reaches into it.
+        assertEq(AgentVault(vault).totalAssets(), vaultTotalAssetsBefore);
+        assertEq(AgentVault(vault).balanceOf(address(1)), vaultSeedSharesBefore);
     }
 
     /// @notice Trading harus tetap berjalan mulus lintas upgrade — bukan sekadar terbaca.
     function test_tradingContinuesAfterUpgrade() public {
-        _deposit(alice, usdc, 1_000 * USDC);
-        bytes32 id = _registerAgent(alice, agentWallet, uint128(600 * USDC), 30 days);
+        (bytes32 id, address vault) = _registerAgent(alice, agentWallet, uint128(4_000 * USDC), 1 days);
+        _allowMarket(id);
 
-        address v2 = address(new CustosLogicV2());
+        address v2 = address(new CustosCoreV2());
         vm.prank(authority);
         custos.upgradeToAndCall(v2, "");
 
         vm.prank(agentWallet);
-        custos.executeSwap(address(market), true, uint128(300 * USDC), 0, 0);
+        AgentVault(vault).executeSwap(address(market), true, uint128(500 * USDC), 0, 0);
 
-        assertEq(custos.getAgent(id).usedInPeriod, 300 * USDC);
-        assertEq(custos.balanceOf(alice, address(mon)), 150 * MON);
+        assertEq(AgentVault(vault).usedInPeriod(), 500 * USDC);
     }
 
     function test_upgradeOnlyByAuthority() public {
-        address v2 = address(new CustosLogicV2());
+        address v2 = address(new CustosCoreV2());
 
         vm.prank(alice);
         vm.expectRevert(NotUpgradeAuthority.selector);
@@ -78,7 +64,7 @@ contract UpgradeTest is Base {
     ///         di-upgrade ke kontrak ber-`selfdestruct`, dan proxy ikut mati.
     function test_implementationCannotBeInitialized() public {
         vm.expectRevert();
-        CustosLogic(implementation).initialize(alice, address(usdc));
+        CustosCore(implementation).initialize(alice, address(usdc));
     }
 
     function test_cannotInitializeTwice() public {

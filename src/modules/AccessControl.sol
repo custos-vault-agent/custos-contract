@@ -1,31 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// OpenZeppelin v5.7 menyatukan varian upgradeable ke paket utama: Initializable dan
-// UUPSUpgradeable memakai ERC-7201, dan ReentrancyGuard kini stateless-untuk-proxy —
-// slot-nya ber-namespace dan nilai nol dibaca sebagai "tidak sedang masuk", sehingga
-// konstruktor yang tidak pernah berjalan di proxy tidak jadi masalah.
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
-import {Agent, Status} from "../Types.sol";
-import {AgentLayout, AgentStorage} from "../storage/AgentStorage.sol";
-import {AgentNotActive, NotAuroraReceiver, NotUpgradeAuthority, Paused, ZeroAddress} from "../Errors.sol";
-import {AuroraReceiverChanged, KuruChanged, PausedChanged} from "../Events.sol";
+import {NotAttestor, NotAuroraReceiver, NotUpgradeAuthority, Paused, ZeroAddress} from "../Errors.sol";
+import {AttestorChanged, AuroraReceiverChanged, MarketAdapterChanged, MinSeedChanged, PausedChanged} from
+    "../Events.sol";
 
 /// @notice Otorisasi, konfigurasi, dan jalur upgrade.
 ///
-/// @dev Aturan keras seluruh sistem, ditegakkan di sini dan diwarisi modul lain:
-///      **identitas tidak pernah datang dari calldata.** Tidak ada fungsi `external`
-///      yang menerima `address owner`. Owner diturunkan dari `msg.sender` — yang
-///      `delegatecall` pertahankan apa adanya dari EOA — atau, untuk aksi agent,
-///      dari registry lewat `_resolveActor`. Satu pelanggaran saja setara confused
-///      deputy dan seluruh vault bisa dikuras.
+/// @dev Aturan keras seluruh sistem: **identitas tidak pernah datang dari calldata.**
+///      Satu-satunya pengecualian sekarang ada di dua tempat, bukan satu: CustosCore
+///      `creditDeposit` (Aurora Receiver ber-allowlist) dan AgentVault
+///      `processDeposit` (hanya bisa dipanggil CustosCore, yang sendiri sudah
+///      memverifikasi pemanggilnya adalah Aurora Receiver).
 ///
-///      Pengecualian tunggal: `VaultModule.creditDeposit`, yang menerima `owner`
-///      tetapi hanya bisa dipanggil Aurora Receiver ber-allowlist.
+///      `_resolveActor` v0.1 dihapus tanpa pengganti: trading sekarang terjadi di
+///      AgentVault, yang mengenali agent-nya lewat immutable `agent` — tidak ada lagi
+///      "wallet terdaftar bertindak untuk owner" yang perlu diselesaikan di CustosCore.
 abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeable {
     modifier onlyUpgradeAuthority() {
         if (msg.sender != AccessStorage.layout().upgradeAuthority) revert NotUpgradeAuthority();
@@ -34,6 +29,11 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     modifier onlyAuroraReceiver() {
         if (msg.sender != AccessStorage.layout().auroraReceiver) revert NotAuroraReceiver();
+        _;
+    }
+
+    modifier onlyAttestor() {
+        if (msg.sender != AccessStorage.layout().attestor) revert NotAttestor();
         _;
     }
 
@@ -51,9 +51,9 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         if (upgradeAuthority_ == address(0) || accountingAsset_ == address(0)) revert ZeroAddress();
         AccessLayout storage $ = AccessStorage.layout();
         $.upgradeAuthority = upgradeAuthority_;
-        // Aset akuntansi dikunci saat inisialisasi dan tidak punya setter. Mengubahnya
-        // setelah ada dana akan mendenominasi ulang setiap allowance dan setiap angka
-        // `totalDelegated` secara diam-diam — invarian I3 langsung tidak bermakna.
+        // Aset akuntansi dikunci saat inisialisasi dan tidak punya setter — sama
+        // seperti v0.1, alasannya tidak berubah: mengubahnya setelah ada vault akan
+        // mendenominasi ulang setiap allowance dan setiap share price secara diam-diam.
         $.accountingAsset = accountingAsset_;
     }
 
@@ -65,10 +65,23 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         $.auroraReceiver = receiver;
     }
 
-    function setKuru(address kuru_) external onlyUpgradeAuthority {
+    function setMarketAdapter(address adapter) external onlyUpgradeAuthority {
         AccessLayout storage $ = AccessStorage.layout();
-        emit KuruChanged($.kuru, kuru_);
-        $.kuru = kuru_;
+        emit MarketAdapterChanged($.marketAdapter, adapter);
+        $.marketAdapter = adapter;
+    }
+
+    function setMinSeed(uint128 amount) external onlyUpgradeAuthority {
+        AccessLayout storage $ = AccessStorage.layout();
+        emit MinSeedChanged($.minSeed, amount);
+        $.minSeed = amount;
+    }
+
+    function setAttestor(address newAttestor) external onlyUpgradeAuthority {
+        if (newAttestor == address(0)) revert ZeroAddress();
+        AccessLayout storage $ = AccessStorage.layout();
+        emit AttestorChanged($.attestor, newAttestor);
+        $.attestor = newAttestor;
     }
 
     function pause() external onlyUpgradeAuthority {
@@ -91,12 +104,20 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         return AccessStorage.layout().auroraReceiver;
     }
 
-    function kuru() external view returns (address) {
-        return AccessStorage.layout().kuru;
+    function marketAdapter() external view returns (address) {
+        return AccessStorage.layout().marketAdapter;
     }
 
     function accountingAsset() external view returns (address) {
         return AccessStorage.layout().accountingAsset;
+    }
+
+    function minSeed() external view returns (uint128) {
+        return AccessStorage.layout().minSeed;
+    }
+
+    function attestor() external view returns (address) {
+        return AccessStorage.layout().attestor;
     }
 
     function paused() external view returns (bool) {
@@ -104,23 +125,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
     }
 
     /* ------------------------------ internal ----------------------------- */
-
-    /// @notice Menerjemahkan `msg.sender` menjadi pemilik dana yang bertanggung jawab.
-    /// @dev Inilah satu-satunya tempat identitas trading ditentukan. Wallet yang tidak
-    ///      terdaftar dianggap owner yang bertindak untuk dirinya sendiri; wallet yang
-    ///      terdaftar hanya bisa bertindak untuk owner yang mendaftarkannya, tidak
-    ///      pernah untuk owner lain, karena `owner` diambil dari record — bukan argumen.
-    /// @return owner Pemilik dana yang saldonya akan bergerak.
-    /// @return agentId 0 bila owner bertindak langsung.
-    function _resolveActor() internal view returns (address owner, bytes32 agentId) {
-        AgentLayout storage $ = AgentStorage.layout();
-        bytes32 id = $.idOfWallet[msg.sender];
-        if (id == bytes32(0)) return (msg.sender, bytes32(0));
-
-        Agent storage a = $.agents[id];
-        if (a.status != Status.Active) revert AgentNotActive();
-        return (a.owner, id);
-    }
 
     function _authorizeUpgrade(address) internal override onlyUpgradeAuthority {}
 }

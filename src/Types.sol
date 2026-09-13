@@ -10,30 +10,27 @@ enum Status {
     Revoked
 }
 
-/// @notice Catatan satu agent. Urutan field ditentukan oleh packing, bukan estetika.
-/// @dev Layout slot (spec §3.3) — jangan diubah urutannya setelah deploy:
+/// @notice Catatan satu agent di registry. Vault-nya terpisah (AgentVault), bukan
+///         bagian dari struct ini — lihat spec v1 D13.
+/// @dev Layout slot (spec v1 §3.1) — jangan diubah urutannya setelah deploy:
 ///        0: name
 ///        1: wallet (160) + status (8)
-///        2: owner  (160)
-///        3: allowance (128) + usedInPeriod (128)
-///        4: reserved (128) + periodStart (64) + periodLength (32)
-///        5: descriptionHash
-///        6: registeredAt (64)
-///
-///      `reserved` selalu 0 di MVP (invarian I5). Ia dideklarasikan sekarang karena
-///      field struct hanya bisa ditambahkan di ujung: kalau baru ditambah saat limit
-///      order masuk di v1.1, ia mendarat di slot 7 dan packing slot 4 hilang selamanya.
-///      Sebuah uint128 yang bernilai nol tidak memakan gas.
-struct Agent {
+///        2: creator
+///        3: vault
+///        4: descriptionHash
+///        5: feeRate (16) + isPublic (8) + registeredAt (64)
+///        6: nansenAttestHash
+///        7: nansenSignature
+struct AgentRecord {
     bytes32 name;
     address wallet;
     Status status;
-    address owner;
-    uint128 allowance;
-    uint128 usedInPeriod;
-    uint128 reserved;
-    uint64 periodStart;
-    uint32 periodLength;
+    address creator;
+    address vault;
     bytes32 descriptionHash;
+    uint16 feeRate;
+    bool isPublic;
     uint64 registeredAt;
+    bytes32 nansenAttestHash;
+    bytes nansenSignature;
 }
