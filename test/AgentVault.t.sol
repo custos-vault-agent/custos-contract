@@ -275,4 +275,83 @@ contract AgentVaultTest is Test {
         uint256 assets = vault.redeem(vault.balanceOf(alice) * 3 / 10, alice, alice);
         assertGt(assets, 0);
     }
+
+    /* -------------------------------- Task 11 -------------------------------- */
+
+    function test_feeMintsSharesOnProfit() public {
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+
+        usdc.mint(address(vault), 1_000 * USDC); // profit, any source
+
+        vm.prank(alice);
+        vault.redeem(1, alice, alice); // triggers _chargeFeeIfProfit
+
+        assertGt(vault.balanceOf(creator), 0);
+    }
+
+    function test_noFeeWhenBelowHighWaterMark() public {
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+        // No profit injected — share price sits exactly at the high water mark.
+
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+
+        assertEq(vault.balanceOf(creator), 0);
+    }
+
+    function test_highWaterMarkOnlyGoesUp() public {
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+        usdc.mint(address(vault), 1_000 * USDC);
+
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+        uint256 hwmAfterProfit = vault.highWaterMark();
+
+        // A second redeem with no new profit must not move it — this is the
+        // property Task 12's circuit-breaker-resume exception (the only sanctioned
+        // way HWM ever falls) has to be measured against.
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+        assertEq(vault.highWaterMark(), hwmAfterProfit);
+    }
+
+    function test_doubleDipPrevented() public {
+        vm.prank(alice);
+        vault.deposit(10_000 * USDC, alice);
+        usdc.mint(address(vault), 1_000 * USDC);
+
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+        uint256 creatorSharesAfterFirstFee = vault.balanceOf(creator);
+
+        // No new profit between these two redeems — a second fee charge here would
+        // be exactly what "double dip" looks like.
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+        assertEq(vault.balanceOf(creator), creatorSharesAfterFirstFee);
+    }
+
+    function testFuzz_feeNeverExceedsProfitRatio(uint256 depositAmount, uint256 profitAmount) public {
+        depositAmount = bound(depositAmount, 100 * USDC, 1_000_000 * USDC);
+        profitAmount = bound(profitAmount, 1, depositAmount);
+        usdc.mint(alice, depositAmount);
+        vm.prank(alice);
+        usdc.approve(address(vault), depositAmount);
+        vm.prank(alice);
+        vault.deposit(depositAmount, alice);
+
+        usdc.mint(address(vault), profitAmount);
+
+        uint256 creatorSharesBefore = vault.balanceOf(creator);
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+        uint256 feeShares = vault.balanceOf(creator) - creatorSharesBefore;
+        uint256 feeAssets = vault.convertToAssets(feeShares);
+
+        // feeRate is 1000 bps (10%) in this fixture's constructor (Task 5's setUp).
+        assertLe(feeAssets, (profitAmount * 1000) / 10_000 + 2); // +2 for rounding slack
+    }
 }
