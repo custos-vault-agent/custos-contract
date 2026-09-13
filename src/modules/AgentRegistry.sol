@@ -12,6 +12,7 @@ import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
 import {
+    AgentAlreadyRevoked,
     DrawdownOutOfRange,
     FeeRateOutOfRange,
     MarketQuoteMismatch,
@@ -191,8 +192,11 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
         if (a.creator != msg.sender) revert NotCreator();
     }
 
+    /// @dev D19: revoke permanen — begitu status Revoked, tidak ada transisi lain
+    ///      yang boleh lewat, termasuk pause/resume/revoke ulang.
     function _setStatus(bytes32 id, Status next) internal {
         AgentRecord storage a = _ownedAgent(id);
+        if (a.status == Status.Revoked) revert AgentAlreadyRevoked();
         emit AgentStatusChanged(id, a.status, next);
         a.status = next;
         AgentVault(a.vault).setStatus(next);
