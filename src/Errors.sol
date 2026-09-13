@@ -10,34 +10,36 @@ error ZeroAddress();
 
 /* ------------------------------- agent ---------------------------------- */
 
-/// @dev Wallet terdaftar tapi statusnya bukan Active (Paused / Revoked).
-error AgentNotActive();
-error NotAgentOwner();
+error NotCreator();
 /// @dev Ikatan wallet→agent permanen (D8); wallet ini sudah pernah dipakai.
 error WalletAlreadyBound();
 error UnknownAgent();
 error AgentAlreadyRevoked();
-error TooManyAgents();
-/// @dev Owner tidak boleh mendaftarkan wallet-nya sendiri sebagai agent: itu
-///      membuat `_resolveActor` ambigu dan mengunci owner di balik allowance-nya.
+/// @dev Creator tidak boleh mendaftarkan wallet-nya sendiri sebagai agent.
 error SelfDelegation();
+error FeeRateOutOfRange();
+error DrawdownOutOfRange();
+error UtilizationOutOfRange();
+error SeedTooSmall();
 
-/* ----------------------------- allowance -------------------------------- */
+/* ------------------------------- nansen ---------------------------------- */
 
+error NotAttestor();
+error AttestationInvalid();
+error AttestationHashMismatch();
+
+/* ------------------------------- vault ----------------------------------- */
+
+error OnlyAgent();
+error OnlyCustosCore();
+error VaultNotActive();
+error VaultPausedOrRevoked();
 error AllowanceExceeded(uint256 headroom);
-/// @dev Saldo bebas owner tidak cukup untuk menaikkan delegasi sebesar ini.
-error InsufficientAvailable(uint256 available);
-
-/* ------------------------------- vault ---------------------------------- */
-
-error ExceedsAvailable(uint256 cap);
-error NothingDeposited();
-error ZeroAmount();
-
-/* ------------------------------ trading --------------------------------- */
-
 error MarketNotAllowed();
 error MarketQuoteMismatch();
-error InsufficientBalance(uint256 balance);
-error PriceTooHigh();
 error SlippageExceeded();
+error ZeroAmount();
+/// @dev Agent memanggil deposit/redeem/withdraw/mint/transfer/approve pada share token.
+error AgentCannotCallThis();
+/// @dev Yield source gagal mengembalikan dana saat `_pullFromYield`.
+error YieldWithdrawFailed();
