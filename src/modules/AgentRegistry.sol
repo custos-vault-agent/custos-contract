@@ -161,6 +161,28 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
         emit MarketAllowedChanged(market, allowed);
     }
 
+    /// @notice Menerima kredit deposit lintas-chain dari Aurora Receiver, dan
+    ///         meneruskannya sebagai deposit ERC-4626 biasa ke vault tujuan.
+    /// @dev Batas kepercayaan sama seperti v0.1's `creditDeposit`: Aurora Receiver
+    ///      adalah satu-satunya pemanggil yang dipercaya tahu identitas dan jumlah
+    ///      yang benar dari sisi rantai asal (spec v1 §11 O1). Dananya sendiri
+    ///      ditarik dari Aurora Receiver ke sini dulu, baru diteruskan lewat
+    ///      `deposit()` biasa — tidak ada fungsi baru di AgentVault untuk ini.
+    function creditDeposit(bytes32 agentId, address subscriber, uint256 assets)
+        external
+        onlyAuroraReceiver
+        whenNotPaused
+        returns (uint256 shares)
+    {
+        AgentRecord storage a = RegistryStorage.layout().agents[agentId];
+        if (a.status == Status.None) revert UnknownAgent();
+
+        address token = AccessStorage.layout().accountingAsset;
+        IERC20(token).safeTransferFrom(msg.sender, address(this), assets);
+        IERC20(token).forceApprove(a.vault, assets);
+        shares = AgentVault(a.vault).deposit(assets, subscriber);
+    }
+
     /* ------------------------------ internal ----------------------------- */
 
     function _ownedAgent(bytes32 id) internal view returns (AgentRecord storage a) {
