@@ -9,14 +9,27 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {Status} from "./Types.sol";
+import {IMarket} from "./interfaces/IMarket.sol";
 import {IYieldSource} from "./interfaces/IYieldSource.sol";
-import {AgentCannotCallThis, OnlyAgent, OnlyCustosCore, VaultNotActive, YieldWithdrawFailed, ZeroAddress} from
-    "./Errors.sol";
 import {
+    AgentCannotCallThis,
+    AllowanceExceeded,
+    MarketNotAllowed,
+    OnlyAgent,
+    OnlyCustosCore,
+    SlippageExceeded,
+    VaultNotActive,
+    YieldWithdrawFailed,
+    ZeroAddress,
+    ZeroAmount
+} from "./Errors.sol";
+import {
+    AgentPeriodRolled,
     FeeMinted,
     SeedDeposited,
     SubscriberDeposited,
     SubscriberRedeemed,
+    SwapExecuted,
     YieldPulled,
     YieldPushed
 } from "./Events.sol";
@@ -236,6 +249,95 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         emit SeedDeposited(address(this), creator, amount, shares, address(1));
     }
 
+    /* -------------------------- agent-facing: trading ------------------------ */
+
+    /// @param isBuy True: `amountIn` dalam accounting asset (USDC), hasil dalam base.
+    ///        False: kebalikannya.
+    /// @param maxNotional Batas notional untuk sisi sell. Diabaikan pada buy — di
+    ///        sana `amountIn` sudah jadi batasnya. Wajib > 0 pada sell: berbeda dari
+    ///        v0.1, tidak ada lagi "owner bertindak langsung" yang butuh fallback
+    ///        tak terbatas — `executeSwap` di sini hanya pernah dipanggil `agent`.
+    function executeSwap(address market, bool isBuy, uint128 amountIn, uint128 minAmountOut, uint128 maxNotional)
+        external
+        onlyAgent
+        whenActive
+        nonReentrant
+        returns (uint128 notionalCharged)
+    {
+        if (amountIn == 0) revert ZeroAmount();
+        if (!allowedMarkets[market]) revert MarketNotAllowed();
+
+        uint128 notionalMax;
+        if (isBuy) {
+            notionalMax = amountIn;
+        } else {
+            if (maxNotional == 0) revert ZeroAmount();
+            notionalMax = maxNotional;
+        }
+
+        _rollPeriod();
+
+        // D24 — agent tidak boleh melebihi allowance *maupun* utilization cap; yang
+        // lebih kecil yang berlaku. Sisa dana selalu tersedia untuk subscriber redeem.
+        uint256 maxTradable = (totalAssets() * maxUtilizationBps) / 10_000;
+        uint256 effectiveAllowance = uint256(allowance) < maxTradable ? allowance : maxTradable;
+        uint256 committed = usedInPeriod;
+        if (committed + notionalMax > effectiveAllowance) {
+            uint256 headroom = committed >= effectiveAllowance ? 0 : effectiveAllowance - committed;
+            revert AllowanceExceeded(headroom);
+        }
+        usedInPeriod += notionalMax;
+
+        // Vault selalu mencoba idle balance dulu, baru tarik dari yield (D22).
+        _pullFromYield(amountIn);
+
+        (uint128 baseAmount, uint128 quoteAmount) = _swapAndSettle(market, isBuy, amountIn, minAmountOut);
+
+        notionalCharged = quoteAmount;
+        if (notionalCharged > notionalMax) revert SlippageExceeded();
+        usedInPeriod -= (notionalMax - notionalCharged);
+
+        _chargeFeeIfProfit();
+        _pushToYield();
+
+        uint256 supply = totalSupply();
+        emit SwapExecuted(
+            address(this),
+            agentId,
+            market,
+            isBuy,
+            baseAmount,
+            quoteAmount,
+            notionalCharged,
+            totalAssets(),
+            supply == 0 ? 0 : (totalAssets() * 1e18) / supply
+        );
+    }
+
+    /// @dev Dipisahkan dari `executeSwap` karena keduanya bersama-sama melampaui
+    ///      batas 16 slot stack solc — kendala yang sama yang sudah memecah v0.1's
+    ///      `TradeModule.executeSwap` dan `KuruMarketAdapter.swap`.
+    function _swapAndSettle(address market, bool isBuy, uint128 amountIn, uint128 minAmountOut)
+        internal
+        returns (uint128 baseAmount, uint128 quoteAmount)
+    {
+        address quoteToken = asset();
+        address baseToken = IMarket(market).baseToken();
+        (address tokenIn, address tokenOut) = isBuy ? (quoteToken, baseToken) : (baseToken, quoteToken);
+
+        uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
+        uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
+
+        IERC20(tokenIn).forceApprove(market, amountIn);
+        IMarket(market).swap(isBuy, amountIn, minAmountOut);
+        IERC20(tokenIn).forceApprove(market, 0);
+
+        uint256 spent = inBefore - IERC20(tokenIn).balanceOf(address(this));
+        uint256 received = IERC20(tokenOut).balanceOf(address(this)) - outBefore;
+
+        return isBuy ? (received.toUint128(), spent.toUint128()) : (spent.toUint128(), received.toUint128());
+    }
+
     /* -------------------------- internal: period ---------------------------- */
 
     /// @dev Sama seperti v0.1 `Accounting._rollPeriod`, dipindah ke sini karena tidak
@@ -249,7 +351,7 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         // forge-lint: disable-next-line(divide-before-multiply)
         periodStart = uint64(uint256(periodStart) + (elapsed / periodLength) * periodLength);
         usedInPeriod = 0;
-        // Task 9 adds the AgentPeriodRolled emit once executeSwap actually calls this.
+        emit AgentPeriodRolled(agentId, periodStart, usedBefore);
     }
 
     /* --------------------------- internal: yield ---------------------------- */
