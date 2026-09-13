@@ -10,9 +10,11 @@ import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
 import {AgentRecord, Status} from "../Types.sol";
 import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
+import {IMarket} from "../interfaces/IMarket.sol";
 import {
     DrawdownOutOfRange,
     FeeRateOutOfRange,
+    MarketQuoteMismatch,
     NotCreator,
     SeedTooSmall,
     SelfDelegation,
@@ -21,8 +23,14 @@ import {
     WalletAlreadyBound,
     ZeroAddress
 } from "../Errors.sol";
-import {AgentAllowanceChanged, AgentPeriodChanged, AgentPublicChanged, AgentRegistered, AgentStatusChanged} from
-    "../Events.sol";
+import {
+    AgentAllowanceChanged,
+    AgentPeriodChanged,
+    AgentPublicChanged,
+    AgentRegistered,
+    AgentStatusChanged,
+    MarketAllowedChanged
+} from "../Events.sol";
 
 /// @notice Registry agent. Menggantikan `AgentCore` v0.1 — metadata agent hidup di
 ///         sini, tapi dana dan trading hidup di `AgentVault` masing-masing.
@@ -138,6 +146,19 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
         AgentRecord storage a = _ownedAgent(id);
         a.isPublic = isPublic;
         emit AgentPublicChanged(id, isPublic);
+    }
+
+    /// @notice Mengizinkan atau melarang sebuah pasar untuk satu vault. Tetap
+    ///         protocol-gated seperti v0.1 — D4 (quote harus USDC) adalah invarian
+    ///         keamanan seluruh model allowance/reserve-ratio, bukan pilihan creator.
+    function setMarketAllowed(bytes32 id, address market, bool allowed) external onlyUpgradeAuthority {
+        if (allowed && IMarket(market).quoteToken() != AccessStorage.layout().accountingAsset) {
+            revert MarketQuoteMismatch();
+        }
+        AgentRecord storage a = RegistryStorage.layout().agents[id];
+        if (a.status == Status.None) revert UnknownAgent();
+        AgentVault(a.vault).setMarketAllowed(market, allowed);
+        emit MarketAllowedChanged(market, allowed);
     }
 
     /* ------------------------------ internal ----------------------------- */

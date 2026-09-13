@@ -7,7 +7,15 @@ import {AgentVault} from "../src/AgentVault.sol";
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {AgentRecord, Status} from "../src/Types.sol";
-import {NotCreator, SeedTooSmall, SelfDelegation, WalletAlreadyBound, ZeroAddress} from "../src/Errors.sol";
+import {
+    MarketQuoteMismatch,
+    NotCreator,
+    NotUpgradeAuthority,
+    SeedTooSmall,
+    SelfDelegation,
+    WalletAlreadyBound,
+    ZeroAddress
+} from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
 
@@ -189,5 +197,45 @@ contract AgentRegistryTest is Test {
         vm.prank(agentWallet);
         vm.expectRevert(NotCreator.selector);
         custos.setAllowance(id, 1);
+    }
+
+    function test_setMarketAllowedForwardsToVault() public {
+        vm.prank(alice);
+        (bytes32 id, address vault) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(authority);
+        custos.setMarketAllowed(id, address(market), true);
+
+        assertTrue(AgentVault(vault).allowedMarkets(address(market)));
+    }
+
+    function test_setMarketAllowedRejectsWrongQuote() public {
+        // quote == base here (both MON) — never equals the USDC accounting asset.
+        MockMarket badMarket = new MockMarket(address(mon), address(mon), 1, 1);
+
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(authority);
+        vm.expectRevert(MarketQuoteMismatch.selector);
+        custos.setMarketAllowed(id, address(badMarket), true);
+    }
+
+    function test_onlyUpgradeAuthorityCanSetMarketAllowed() public {
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(NotUpgradeAuthority.selector);
+        custos.setMarketAllowed(id, address(market), true);
     }
 }
