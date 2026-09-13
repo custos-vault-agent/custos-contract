@@ -8,6 +8,7 @@ import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {AgentRecord, Status} from "../src/Types.sol";
 import {
+    AgentAlreadyRevoked,
     MarketQuoteMismatch,
     NotCreator,
     NotUpgradeAuthority,
@@ -144,6 +145,27 @@ contract AgentRegistryTest is Test {
 
         vm.prank(alice);
         custos.revokeAgent(id);
+
+        assertEq(uint8(custos.getAgent(id).status), uint8(Status.Revoked));
+    }
+
+    function test_revokedAgentCannotBeResumedOrPaused() public {
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        vm.prank(alice);
+        custos.revokeAgent(id);
+
+        vm.prank(alice);
+        vm.expectRevert(AgentAlreadyRevoked.selector);
+        custos.resumeAgent(id);
+
+        vm.prank(alice);
+        vm.expectRevert(AgentAlreadyRevoked.selector);
+        custos.pauseAgent(id);
 
         assertEq(uint8(custos.getAgent(id).status), uint8(Status.Revoked));
     }
