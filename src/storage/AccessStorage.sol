@@ -3,18 +3,13 @@ pragma solidity ^0.8.24;
 
 /// @custom:storage-location erc7201:custos.storage.access
 struct AccessLayout {
-    /// @dev Multisig 2-of-3 + Timelock (spec D10). Satu-satunya yang boleh upgrade.
-    address upgradeAuthority;
-    /// @dev Satu-satunya pemanggil `creditDeposit` yang sah (spec §4.2).
-    address auroraReceiver;
-    /// @dev Router Kuru. Belum dipakai di MVP — `executeSwap` memanggil market
-    ///      langsung — tapi dideklarasikan sekarang dengan alasan yang sama seperti
-    ///      `Agent.reserved`: field hanya bisa ditambah di ujung struct.
-    address kuru;
-    /// @dev USDC. Unit tunggal untuk allowance dan delegasi (spec D4).
-    address accountingAsset;
-    /// @dev Emergency stop. Memblokir deposit, registrasi, dan trading.
-    bool paused;
+    address upgradeAuthority; // multisig + timelock (D10)
+    address auroraReceiver; // pemanggil creditDeposit
+    address attestor; // wallet yang sign Nansen attestation (D23)
+    address accountingAsset; // USDC (D4)
+    address marketAdapter; // KuruMarketAdapter — renamed dari `kuru`
+    uint128 minSeed; // minimum seed deposit creator (D15)
+    bool paused; // emergency stop
 }
 
 library AccessStorage {
