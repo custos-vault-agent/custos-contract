@@ -6,9 +6,8 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
-import {NotAttestor, NotAuroraReceiver, NotUpgradeAuthority, Paused, ZeroAddress} from "../Errors.sol";
-import {AttestorChanged, AuroraReceiverChanged, MarketAdapterChanged, MinSeedChanged, PausedChanged} from
-    "../Events.sol";
+import {NotAuroraReceiver, NotUpgradeAuthority, Paused, ZeroAddress} from "../Errors.sol";
+import {AuroraReceiverChanged, MarketAdapterChanged, MinSeedChanged, PausedChanged} from "../Events.sol";
 
 /// @notice Otorisasi, konfigurasi, dan jalur upgrade.
 ///
@@ -29,11 +28,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     modifier onlyAuroraReceiver() {
         if (msg.sender != AccessStorage.layout().auroraReceiver) revert NotAuroraReceiver();
-        _;
-    }
-
-    modifier onlyAttestor() {
-        if (msg.sender != AccessStorage.layout().attestor) revert NotAttestor();
         _;
     }
 
@@ -77,13 +71,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         $.minSeed = amount;
     }
 
-    function setAttestor(address newAttestor) external onlyUpgradeAuthority {
-        if (newAttestor == address(0)) revert ZeroAddress();
-        AccessLayout storage $ = AccessStorage.layout();
-        emit AttestorChanged($.attestor, newAttestor);
-        $.attestor = newAttestor;
-    }
-
     function pause() external onlyUpgradeAuthority {
         AccessStorage.layout().paused = true;
         emit PausedChanged(true);
@@ -114,10 +101,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     function minSeed() external view returns (uint128) {
         return AccessStorage.layout().minSeed;
-    }
-
-    function attestor() external view returns (address) {
-        return AccessStorage.layout().attestor;
     }
 
     function paused() external view returns (bool) {

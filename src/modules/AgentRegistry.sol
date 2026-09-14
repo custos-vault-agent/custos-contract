@@ -102,9 +102,7 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
             descriptionHash: keccak256(bytes(description)),
             feeRate: feeRate,
             isPublic: isPublic,
-            registeredAt: uint64(block.timestamp),
-            nansenAttestHash: bytes32(0),
-            nansenSignature: ""
+            registeredAt: uint64(block.timestamp)
         });
         $.idOfWallet[wallet] = id;
         $.agentsOfCreator[msg.sender].push(id);

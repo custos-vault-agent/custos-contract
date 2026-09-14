@@ -11,7 +11,9 @@ enum Status {
 }
 
 /// @notice Catatan satu agent di registry. Vault-nya terpisah (AgentVault), bukan
-///         bagian dari struct ini — lihat spec v1 D13.
+///         bagian dari struct ini — lihat spec v1 D13. Nansen attestation juga
+///         terpisah (NansenModule), bukan bagian dari struct ini — lihat
+///         docs/superpowers/specs/2026-09-14-nansen-module-split-design.md.
 /// @dev Layout slot (spec v1 §3.1) — jangan diubah urutannya setelah deploy:
 ///        0: name
 ///        1: wallet (160) + status (8)
@@ -19,8 +21,6 @@ enum Status {
 ///        3: vault
 ///        4: descriptionHash
 ///        5: feeRate (16) + isPublic (8) + registeredAt (64)
-///        6: nansenAttestHash
-///        7: nansenSignature
 struct AgentRecord {
     bytes32 name;
     address wallet;
@@ -31,6 +31,4 @@ struct AgentRecord {
     uint16 feeRate;
     bool isPublic;
     uint64 registeredAt;
-    bytes32 nansenAttestHash;
-    bytes nansenSignature;
 }

@@ -5,7 +5,6 @@ pragma solidity ^0.8.24;
 struct AccessLayout {
     address upgradeAuthority; // multisig + timelock (D10)
     address auroraReceiver; // pemanggil creditDeposit
-    address attestor; // wallet yang sign Nansen attestation (D23)
     address accountingAsset; // USDC (D4)
     address marketAdapter; // KuruMarketAdapter — renamed dari `kuru`
     uint128 minSeed; // minimum seed deposit creator (D15)
