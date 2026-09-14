@@ -28,10 +28,16 @@ abi: build
 # escape hatch so deploy/upgrade keep working here; it does NOT make the
 # contract deployable on a real chain. See the plan's self-review note —
 # splitting CustosCore into smaller facets is a real, separate follow-up.
+# --slow: Deploy.s.sol broadcasts from several different senders (deployer,
+# demo user, script-derived agent wallets) where a later sender's tx
+# depends on an earlier sender's already having landed (e.g. an agent
+# wallet spending ETH the deployer just sent it). Without --slow, forge
+# submits transactions without waiting for prior ones to confirm and a
+# dependent tx can hit "insufficient funds" before its funding tx is mined.
 deploy: build
 	mkdir -p deployments
-	forge script script/Deploy.s.sol:DeployScript --rpc-url $(RPC_URL) --broadcast --disable-code-size-limit -vvvv
+	forge script script/Deploy.s.sol:DeployScript --rpc-url $(RPC_URL) --broadcast --slow --disable-code-size-limit -vvvv
 
 upgrade: build
 	mkdir -p deployments
-	forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --disable-code-size-limit -vvvv
+	forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --slow --disable-code-size-limit -vvvv
