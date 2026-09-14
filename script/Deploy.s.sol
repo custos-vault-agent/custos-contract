@@ -9,13 +9,15 @@ import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {MockYieldSource} from "../src/adapters/MockYieldSource.sol";
 import {FixedPriceMarket} from "../src/adapters/FixedPriceMarket.sol";
+import {NansenModule} from "../src/modules/NansenModule.sol";
 import {MockERC20} from "../test/mocks/MockERC20.sol";
 
 /// @notice Deploys the full Custos stack to a local Anvil node and seeds it
 ///         with real demo agents, swaps, deposits, and Nansen attestations —
 ///         so the marketplace has genuine on-chain history instead of
 ///         fabricated numbers. See custos-web/docs/superpowers/specs/
-///         2026-09-14-wire-frontend-to-contracts-design.md (section A).
+///         2026-09-14-wire-frontend-to-contracts-design.md (section A) and
+///         docs/superpowers/specs/2026-09-14-nansen-module-split-design.md.
 contract DeployScript is Script {
     uint256 internal constant USDC = 1e6;
     uint256 internal constant MON = 1e18;
@@ -40,6 +42,16 @@ contract DeployScript is Script {
             )
         );
 
+        address nansenImplementation = address(new NansenModule());
+        NansenModule nansenModule = NansenModule(
+            address(
+                new CustosProxy(
+                    nansenImplementation,
+                    abi.encodeCall(NansenModule.initialize, (deployer, deployer, address(custos)))
+                )
+            )
+        );
+
         // 1 MON = 2 USDC, same convention as test/Base.t.sol.
         FixedPriceMarket market = new FixedPriceMarket(address(mon), address(usdc), 2 * USDC, 1 * MON);
         mon.mint(address(market), 1_000_000 * MON);
@@ -49,7 +61,6 @@ contract DeployScript is Script {
 
         custos.setMarketAdapter(address(market));
         custos.setMinSeed(uint128(500 * USDC));
-        custos.setAttestor(deployer);
 
         // Demo agent wallets are script-derived, not real secrets — fund
         // them with just enough ETH to pay gas for their seeded swaps.
@@ -150,7 +161,7 @@ contract DeployScript is Script {
             nansenPnls[0],
             nansenWinRates[0],
             nansenTimestamps[0]
-        ) = _submitDemoAttestation(custos, deployerKey, demoUser, agentIds[0], "Smart Trader", 42_000, 61);
+        ) = _submitDemoAttestation(nansenModule, deployerKey, demoUser, agentIds[0], "Smart Trader", 42_000, 61);
         (
             nansenAgentIds[1],
             nansenWallets[1],
@@ -158,11 +169,13 @@ contract DeployScript is Script {
             nansenPnls[1],
             nansenWinRates[1],
             nansenTimestamps[1]
-        ) = _submitDemoAttestation(custos, deployerKey, demoUser, agentIds[1], "Fund", 310_000, 58);
+        ) = _submitDemoAttestation(nansenModule, deployerKey, demoUser, agentIds[1], "Fund", 310_000, 58);
 
         string memory json = "deployment";
         vm.serializeAddress(json, "custosProxy", address(custos));
         vm.serializeAddress(json, "custosImplementation", implementation);
+        vm.serializeAddress(json, "nansenModule", address(nansenModule));
+        vm.serializeAddress(json, "nansenModuleImplementation", nansenImplementation);
         vm.serializeAddress(json, "usdc", address(usdc));
         vm.serializeAddress(json, "mon", address(mon));
         vm.serializeAddress(json, "market", address(market));
@@ -182,6 +195,7 @@ contract DeployScript is Script {
         vm.writeJson(finalNansenJson, "deployments/demo-nansen.json");
 
         console2.log("Custos proxy deployed at", address(custos));
+        console2.log("Nansen module deployed at", address(nansenModule));
     }
 
     /// @dev Private key of a script-derived demo agent wallet — never a
@@ -191,7 +205,7 @@ contract DeployScript is Script {
     }
 
     function _submitDemoAttestation(
-        CustosCore custos,
+        NansenModule nansenModule,
         uint256 attestorKey,
         address wallet,
         bytes32 agentId,
@@ -208,7 +222,7 @@ contract DeployScript is Script {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startBroadcast(attestorKey);
-        custos.submitAttestation(agentId, hash, signature);
+        nansenModule.submitAttestation(agentId, hash, signature);
         vm.stopBroadcast();
 
         return (agentId, wallet, label, pnl, winRate, timestamp);

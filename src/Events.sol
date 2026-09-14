@@ -41,11 +41,9 @@ event AgentPeriodChanged(bytes32 indexed id, uint32 oldPeriodLength, uint32 newP
 
 event AgentPublicChanged(bytes32 indexed id, bool isPublic);
 
-/* ----------------------------- CustosCore: nansen --------------------------- */
+/* ----------------------------- NansenModule --------------------------------- */
 
-event NansenAttestationSubmitted(
-    bytes32 indexed agentId, address indexed creator, bytes32 attestHash, uint64 timestamp
-);
+event NansenAttestationSubmitted(bytes32 indexed agentId, bytes32 attestHash, uint64 timestamp);
 
 /* ------------------------------- AgentVault -------------------------------- */
 
