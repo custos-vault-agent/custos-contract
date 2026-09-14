@@ -13,3 +13,7 @@ docs/
 
 # Dotenv file
 .env
+
+# Deploy output — regenerated per Anvil session, addresses are not stable
+# across restarts, so this is never committed.
+/deployments/
