@@ -64,6 +64,25 @@
   },
   {
     "type": "function",
+    "name": "agentExists",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "agentIdOf",
     "inputs": [
       {
@@ -96,19 +115,6 @@
         "name": "",
         "type": "bytes32[]",
         "internalType": "bytes32[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "attestor",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -215,16 +221,6 @@
             "name": "registeredAt",
             "type": "uint64",
             "internalType": "uint64"
-          },
-          {
-            "name": "nansenAttestHash",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "nansenSignature",
-            "type": "bytes",
-            "internalType": "bytes"
           }
         ]
       }
@@ -441,19 +437,6 @@
   },
   {
     "type": "function",
-    "name": "setAttestor",
-    "inputs": [
-      {
-        "name": "newAttestor",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setAuroraReceiver",
     "inputs": [
       {
@@ -552,29 +535,6 @@
   },
   {
     "type": "function",
-    "name": "submitAttestation",
-    "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "attestHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "unpause",
     "inputs": [],
     "outputs": [],
@@ -610,55 +570,6 @@
     ],
     "outputs": [],
     "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "verifyAttestation",
-    "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "wallet",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "label",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "pnl",
-        "type": "int256",
-        "internalType": "int256"
-      },
-      {
-        "name": "winRate",
-        "type": "uint16",
-        "internalType": "uint16"
-      },
-      {
-        "name": "timestamp",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "valid",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
-        "name": "signer",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -836,25 +747,6 @@
   },
   {
     "type": "event",
-    "name": "AttestorChanged",
-    "inputs": [
-      {
-        "name": "oldAttestor",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "newAttestor",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "AuroraReceiverChanged",
     "inputs": [
       {
@@ -944,37 +836,6 @@
   },
   {
     "type": "event",
-    "name": "NansenAttestationSubmitted",
-    "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "creator",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "attestHash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "timestamp",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "PausedChanged",
     "inputs": [
       {
@@ -1017,40 +878,8 @@
   },
   {
     "type": "error",
-    "name": "AttestationInvalid",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "DrawdownOutOfRange",
     "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ECDSAInvalidSignature",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ECDSAInvalidSignatureLength",
-    "inputs": [
-      {
-        "name": "length",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ECDSAInvalidSignatureS",
-    "inputs": [
-      {
-        "name": "s",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
   },
   {
     "type": "error",
@@ -1086,11 +915,6 @@
   {
     "type": "error",
     "name": "MarketQuoteMismatch",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotAttestor",
     "inputs": []
   },
   {
