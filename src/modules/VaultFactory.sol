@@ -57,7 +57,7 @@ abstract contract VaultFactory {
     }
 
     function _bytes32ToString(bytes32 data) internal pure returns (string memory) {
-        uint256 len;
+        uint256 len = 0;
         while (len < 32 && data[len] != 0) len++;
         bytes memory result = new bytes(len);
         for (uint256 i = 0; i < len; i++) {

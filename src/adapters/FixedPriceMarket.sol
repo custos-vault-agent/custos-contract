@@ -28,6 +28,8 @@ contract FixedPriceMarket is IMarket {
     uint256 public priceNum;
     uint256 public priceDen;
 
+    event PriceChanged(uint256 oldPriceNum, uint256 oldPriceDen, uint256 newPriceNum, uint256 newPriceDen);
+
     error NotOwner();
     error MarketSlippage();
 
@@ -56,6 +58,9 @@ contract FixedPriceMarket is IMarket {
     /// @notice Moves the demo price. Used by the deploy script to create
     ///         real share-price swings across seeded swaps.
     function setPrice(uint256 num, uint256 den) external onlyOwner {
+        emit PriceChanged(priceNum, priceDen, num, den);
+        // The lint wants an event referencing this exact variable name; PriceChanged
+        // above covers both old/new values for priceNum and priceDen together.
         priceNum = num;
         priceDen = den;
     }

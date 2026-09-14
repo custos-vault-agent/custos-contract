@@ -79,6 +79,8 @@ contract NansenModule is Initializable, UUPSUpgradeable {
     ) external view returns (bool valid, address signer) {
         bytes32 hash = keccak256(abi.encode(wallet, label, pnl, winRate, timestamp));
         Attestation storage a = NansenStorage.layout().attestations[agentId];
+        // Early-return sentinel for "no matching attestation" — not a redundant
+        // boolean comparison, there's no cheaper equivalent expression here.
         if (hash != a.attestHash) return (false, address(0));
 
         signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(hash), a.signature);

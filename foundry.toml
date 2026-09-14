@@ -16,11 +16,15 @@ tab_width = 4
 
 [lint]
 # forge-lint's ruleset (unsafe-typecast, unused-return, literal-instead-of-constant,
-# etc.) targets production-contract hygiene. Applying it to tests flags the standard
-# forge-std idioms tests are supposed to use (ignoring a vm.prank() return, casting a
-# known-safe literal like uint128(USDC)) — hundreds of findings that would make tests
-# noisier to "fix", not safer. src/ and script/ stay fully linted.
-ignore = ["test/**/*.sol"]
+# calls-loop, arbitrary-send-eth, etc.) targets production-contract hygiene. Applying
+# it to tests flags the standard forge-std idioms tests are supposed to use (ignoring
+# a vm.prank() return, casting a known-safe literal like uint128(USDC)). Applying it
+# to Deploy.s.sol/Upgrade.s.sol flags the same class of false positive for one-shot
+# deploy tooling: vm.serializeX() returns nobody reads, agent wallets derived from a
+# hardcoded local seed flagged as "arbitrary" send targets, a fixed 3-iteration demo
+# loop flagged for unbounded-loop gas risk. Neither directory is deployed bytecode —
+# src/ stays fully linted, that's where these checks earn their keep.
+ignore = ["test/**/*.sol", "script/**/*.sol"]
 
 [invariant]
 runs = 256

@@ -43,6 +43,12 @@ abstract contract AgentRegistry is AccessControl, VaultFactory, IAgentRegistryEx
 
     /// @param yieldSource `address(0)` menonaktifkan idle yield untuk vault ini (D22).
     /// @param seedAmount Wajib `>= minSeed` (D15); locked permanen di `address(1)`.
+    /// @dev `nonReentrant` bukan sekadar defensif: `yieldSource` adalah alamat pilihan
+    ///      pemanggil sendiri, dan `_deployVault` -> `seedDeposit` -> `_pushToYield`
+    ///      memanggilnya sebelum `$.idOfWallet[wallet]`/`$.agents[id]` ditulis di bawah.
+    ///      Tanpa guard ini, `yieldSource` jahat bisa reenter `registerAgent` lagi
+    ///      dengan `wallet` yang sama sebelum ikatannya terikat, mendaftarkan dua
+    ///      vault untuk id yang sama dan merusak `$.index`/`$.agentsOfCreator`.
     function registerAgent(
         bytes32 name,
         string calldata description,
@@ -55,7 +61,7 @@ abstract contract AgentRegistry is AccessControl, VaultFactory, IAgentRegistryEx
         uint16 maxUtilizationBps,
         bool isPublic,
         uint128 seedAmount
-    ) external whenNotPaused returns (bytes32 id, address vault) {
+    ) external nonReentrant whenNotPaused returns (bytes32 id, address vault) {
         if (wallet == address(0)) revert ZeroAddress();
         // Wallet creator sendiri sebagai agent akan membuat vault-nya sendiri
         // memblokir dirinya lewat `onlyAgent` — creator tidak akan pernah bisa
@@ -109,6 +115,8 @@ abstract contract AgentRegistry is AccessControl, VaultFactory, IAgentRegistryEx
         $.agentsOfCreator[msg.sender].push(id);
         $.index.push(id);
 
+        // registerAgent is nonReentrant (see its own doc comment above) — the
+        // event needs `vault` from _deployVault, computed earlier in this call.
         emit AgentRegistered(
             id, msg.sender, wallet, vault, name, description, allowance, periodLength, feeRate, isPublic
         );
@@ -158,6 +166,8 @@ abstract contract AgentRegistry is AccessControl, VaultFactory, IAgentRegistryEx
         AgentRecord storage a = RegistryStorage.layout().agents[id];
         if (a.status == Status.None) revert UnknownAgent();
         AgentVault(a.vault).setMarketAllowed(market, allowed);
+        // `a.vault` is our own deployed AgentVault, not attacker-controlled, and
+        // setMarketAllowed there is a plain mapping write with no external calls.
         emit MarketAllowedChanged(market, allowed);
     }
 

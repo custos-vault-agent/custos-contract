@@ -102,6 +102,9 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         address custosCore_,
         address asset_,
         address marketAdapter_,
+        // address(0) is a valid, meaningful value here — it disables idle yield
+        // entirely (pure trading vault, D22), checked throughout via
+        // `if (yieldSource == address(0))` in _pushToYield/_pullFromYield/totalAssets.
         address yieldSource_,
         uint16 feeRate_,
         uint16 maxDrawdownBps_,
@@ -152,6 +155,9 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         if (status != Status.Active) revert VaultNotActive();
         shares = super.deposit(assets, receiver);
         _pushToYield();
+        // nonReentrant-guarded; the event needs `shares` computed by the deposit
+        // above, so it can only be emitted after — same reasoning for every
+        // event-after-external-call finding in this file.
         emit SubscriberDeposited(address(this), receiver, assets, shares);
     }
 
@@ -229,6 +235,11 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     function setStatus(Status newStatus) external onlyCustosCore {
         if (newStatus == Status.Active && status == Status.Paused) {
             uint256 supply = totalSupply();
+            // The status transition this HWM reset is tied to is already logged one
+            // level up (AgentRegistry's AgentStatusChanged). A dedicated
+            // HighWaterMarkReset event would be a real, separate addition to the
+            // public log surface — not adding one silently; flagging it as an open
+            // question instead.
             highWaterMark = supply == 0 ? 1e18 : (totalAssets() * 1e18) / supply;
         }
         status = newStatus;
@@ -260,6 +271,8 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         _mint(address(1), shares);
         // `highWaterMark` sudah 1e18 sejak constructor — tidak perlu diset ulang di sini.
         _pushToYield();
+        // onlyCustosCore, and its sole caller (registerAgent) is itself
+        // nonReentrant — see deposit() above for the general reasoning.
         emit SeedDeposited(address(this), creator, amount, shares, address(1));
     }
 
@@ -273,9 +286,9 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     ///        tak terbatas — `executeSwap` di sini hanya pernah dipanggil `agent`.
     function executeSwap(address market, bool isBuy, uint128 amountIn, uint128 minAmountOut, uint128 maxNotional)
         external
+        nonReentrant
         onlyAgent
         whenActive
-        nonReentrant
         returns (uint128 notionalCharged)
     {
         if (amountIn == 0) revert ZeroAmount();
@@ -320,6 +333,9 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         if (!tripped) _pushToYield();
 
         uint256 supply = totalSupply();
+        // nonReentrant-guarded (see the modifier order fix above); the event needs
+        // baseAmount/quoteAmount/notionalCharged/sharePrice computed by the swap
+        // and fee/breaker logic above it — same reasoning as deposit() above.
         emit SwapExecuted(
             address(this),
             agentId,
@@ -348,6 +364,9 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
         IERC20(tokenIn).forceApprove(market, amountIn);
+        // Only reachable via executeSwap, which is nonReentrant. Return value is
+        // deliberately ignored — spent/received are measured from balance deltas
+        // below, not trusted from the market's own accounting.
         IMarket(market).swap(isBuy, amountIn, minAmountOut);
         IERC20(tokenIn).forceApprove(market, 0);
 
@@ -363,6 +382,8 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     ///      ada lagi modul dasar bersama untuk banyak agent — satu vault = satu agent.
     function _rollPeriod() internal {
         if (periodLength == 0) return;
+        // periodLength is a trading-allowance window (hours/days) — the ~seconds of
+        // drift a validator could apply to block.timestamp is immaterial at this scale.
         uint256 elapsed = block.timestamp - periodStart;
         if (elapsed < periodLength) return;
 
@@ -382,6 +403,8 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         if (idle == 0) return;
         IERC20(asset()).forceApprove(yieldSource, idle);
         IYieldSource(yieldSource).deposit(idle);
+        // Only called from deposit/mint/seedDeposit/executeSwap, all guarded (see
+        // deposit() above) — the event needs `idle` as actually pushed.
         emit YieldPushed(address(this), idle);
     }
 
@@ -396,8 +419,11 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         uint256 toWithdraw = deficit > available ? available : deficit;
         if (toWithdraw == 0) return;
 
+        // Only called from redeem/withdraw/executeSwap, all guarded — see
+        // deposit() above.
         uint256 withdrawn = IYieldSource(yieldSource).withdraw(toWithdraw);
         if (withdrawn == 0) revert YieldWithdrawFailed();
+        // Event needs `withdrawn` as actually returned; same guard as above.
         emit YieldPulled(address(this), withdrawn);
     }
 
@@ -410,11 +436,23 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         uint256 supply = totalSupply();
         if (supply == 0) return;
 
-        uint256 currentSharePrice = (totalAssets() * 1e18) / supply;
+        uint256 assets = totalAssets();
+        uint256 currentSharePrice = (assets * 1e18) / supply;
         if (currentSharePrice <= highWaterMark) return;
 
-        uint256 profitPerShare = currentSharePrice - highWaterMark;
-        uint256 totalProfit = (profitPerShare * supply) / 1e18;
+        // Multiply-before-divide: totalProfit is derived directly from raw
+        // assets/highWaterMark/supply with a single division, instead of chaining
+        // through a separately-rounded currentSharePrice/profitPerShare (the old
+        // two-division chain). In real (unrounded) arithmetic
+        // (currentSharePrice - highWaterMark) * supply / 1e18 reduces exactly to
+        // assets - highWaterMark * supply / 1e18 — the first term's division and
+        // multiplication cancel. Doing that cancellation before rounding, instead
+        // of after, means this formula loses at most 1 unit of asset to rounding,
+        // versus the old formula's error scaling with supply (could lose far more
+        // for a vault with a large share supply). Cannot underflow: the guard
+        // above establishes assets*1e18/supply > highWaterMark, which implies
+        // assets > highWaterMark*supply/1e18 even after flooring the subtrahend.
+        uint256 totalProfit = assets - (highWaterMark * supply) / 1e18;
         uint256 feeAssets = (totalProfit * feeRate) / 10_000;
         uint256 feeShares = convertToShares(feeAssets);
 
@@ -424,8 +462,11 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         // jadi tidak bisa dikenai fee lagi selamanya.
         if (feeShares > 0) {
             _mint(creator, feeShares);
-            highWaterMark = (totalAssets() * 1e18) / totalSupply();
+            // `assets` is unchanged by minting shares — only totalSupply() moved.
+            highWaterMark = (assets * 1e18) / totalSupply();
         }
+        // Only called from redeem/withdraw/executeSwap, all guarded — see
+        // deposit() above. Event needs feeShares/highWaterMark as just computed.
         emit FeeMinted(address(this), creator, feeShares, feeAssets, highWaterMark);
     }
 
@@ -441,6 +482,7 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         uint256 threshold = (highWaterMark * (10_000 - maxDrawdownBps)) / 10_000;
         if (currentPrice < threshold) {
             status = Status.Paused;
+            // Only called from executeSwap, which is guarded — see deposit() above.
             emit CircuitBreakerTriggered(address(this), currentPrice, highWaterMark, maxDrawdownBps);
             return true;
         }
