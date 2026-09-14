@@ -11,6 +11,7 @@ import {AgentRecord, Status} from "../Types.sol";
 import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
+import {IAgentRegistryExists} from "../interfaces/IAgentRegistryExists.sol";
 import {
     AgentAlreadyRevoked,
     DrawdownOutOfRange,
@@ -37,7 +38,7 @@ import {
 ///         sini, tapi dana dan trading hidup di `AgentVault` masing-masing.
 ///
 /// @dev Setiap fungsi di sini ditandatangani creator, tidak pernah oleh agent.
-abstract contract AgentRegistry is AccessControl, VaultFactory {
+abstract contract AgentRegistry is AccessControl, VaultFactory, IAgentRegistryExists {
     using SafeERC20 for IERC20;
 
     /// @param yieldSource `address(0)` menonaktifkan idle yield untuk vault ini (D22).

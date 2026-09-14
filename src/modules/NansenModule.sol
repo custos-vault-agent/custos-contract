@@ -9,10 +9,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {Attestation, NansenLayout, NansenStorage} from "../storage/NansenStorage.sol";
 import {AttestationInvalid, NotAttestor, NotUpgradeAuthority, UnknownAgent, ZeroAddress} from "../Errors.sol";
 import {AttestorChanged, NansenAttestationSubmitted} from "../Events.sol";
-
-interface IAgentRegistryExists {
-    function agentExists(bytes32 id) external view returns (bool);
-}
+import {IAgentRegistryExists} from "../interfaces/IAgentRegistryExists.sol";
 
 /// @notice Attestation Nansen on-chain (spec v1 D23, §4.2, §12) — split out of
 ///         CustosCore purely to bring CustosCore back under the EIP-170
