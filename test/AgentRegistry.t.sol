@@ -56,6 +56,20 @@ contract AgentRegistryTest is Test {
         usdc.approve(address(custos), type(uint256).max);
     }
 
+    function test_agentExistsFalseForUnknownId() public {
+        assertFalse(custos.agentExists(bytes32(uint256(0xdead))));
+    }
+
+    function test_agentExistsTrueAfterRegister() public {
+        vm.prank(alice);
+        (bytes32 id,) = custos.registerAgent(
+            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
+            address(0), 7000, true, 1_000 * uint128(USDC)
+        );
+
+        assertTrue(custos.agentExists(id));
+    }
+
     function test_registerAgentDeploysVault() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(

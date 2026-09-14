@@ -223,4 +223,8 @@ abstract contract AgentRegistry is AccessControl, VaultFactory {
     function agentAt(uint256 i) external view returns (bytes32) {
         return RegistryStorage.layout().index[i];
     }
+
+    function agentExists(bytes32 id) external view returns (bool) {
+        return RegistryStorage.layout().agents[id].status != Status.None;
+    }
 }
