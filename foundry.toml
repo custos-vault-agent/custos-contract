@@ -14,6 +14,14 @@ fs_permissions = [{ access = "read-write", path = "./deployments" }]
 line_length = 110
 tab_width = 4
 
+[lint]
+# forge-lint's ruleset (unsafe-typecast, unused-return, literal-instead-of-constant,
+# etc.) targets production-contract hygiene. Applying it to tests flags the standard
+# forge-std idioms tests are supposed to use (ignoring a vm.prank() return, casting a
+# known-safe literal like uint128(USDC)) — hundreds of findings that would make tests
+# noisier to "fix", not safer. src/ and script/ stay fully linted.
+ignore = ["test/**/*.sol"]
+
 [invariant]
 runs = 256
 depth = 64

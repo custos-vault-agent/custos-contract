@@ -14,8 +14,7 @@ import {
     NotUpgradeAuthority,
     SeedTooSmall,
     SelfDelegation,
-    WalletAlreadyBound,
-    ZeroAddress
+    WalletAlreadyBound
 } from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
