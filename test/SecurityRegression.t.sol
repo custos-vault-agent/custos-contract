@@ -22,6 +22,9 @@ import {
     YieldSourceNotAllowed
 } from "../src/Errors.sol";
 import {MockAggregator} from "./mocks/MockAggregator.sol";
+import {NanSigil} from "nansigil-contract/NanSigil.sol";
+import {NanSigilProxy} from "nansigil-contract/NanSigilProxy.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -279,5 +282,42 @@ contract SecurityRegressionTest is Base {
         custos.setMinSeed(1);
         vm.prank(next);
         custos.setMinSeed(1);
+    }
+
+    /* ------------------------------ NanSigil ------------------------------- */
+
+    /// Custos binds a wallet-keyed NanSigil attestation to an agent through its creator.
+    function test_agentAttestationLooksUpCreatorInNanSigil() public {
+        uint256 attestorKey = 0xA77E5;
+        NanSigil sigil = NanSigil(
+            address(
+                new NanSigilProxy(
+                    address(new NanSigil()),
+                    abi.encodeCall(NanSigil.initialize, (authority, vm.addr(attestorKey)))
+                )
+            )
+        );
+        (bytes32 id,) = _register(address(0));
+
+        (bytes32 h0, uint64 t0) = custos.agentAttestation(id);
+        assertEq(t0, 0); // NanSigil not configured yet
+        assertEq(h0, bytes32(0));
+
+        vm.prank(authority);
+        custos.setNanSigil(address(sigil));
+        (, t0) = custos.agentAttestation(id);
+        assertEq(t0, 0); // configured, creator not attested yet
+
+        uint64 ts = uint64(block.timestamp);
+        bytes32 hash = keccak256(abi.encode(alice, "Fund", int256(1), uint16(50), ts));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attestorKey, MessageHashUtils.toEthSignedMessageHash(hash));
+        vm.prank(bob); // anyone relays
+        sigil.submit(alice, "Fund", 1, 50, ts, abi.encodePacked(r, s, v));
+
+        (bytes32 h1, uint64 t1) = custos.agentAttestation(id);
+        assertEq(h1, hash);
+        assertEq(t1, ts);
+        (bool valid,) = sigil.verify(alice, "Fund", 1, 50, ts);
+        assertTrue(valid);
     }
 }

@@ -11,6 +11,7 @@ import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
 import {IVaultFactory} from "../interfaces/IVaultFactory.sol";
+import {INanSigil} from "nansigil-contract/interfaces/INanSigil.sol";
 import {
     AgentAlreadyRevoked,
     DrawdownOutOfRange,
@@ -231,7 +232,13 @@ abstract contract AgentRegistry is AccessControl {
         return RegistryStorage.layout().index[i];
     }
 
-    function agentExists(bytes32 id) external view returns (bool) {
-        return RegistryStorage.layout().agents[id].status != Status.None;
+    /// @notice The creator's latest NanSigil attestation, bound here by looking up the
+    ///         agent's creator wallet. `timestamp == 0` means none (or NanSigil unset).
+    ///         Plaintext for `INanSigil.verify` comes from NanSigil's event / an indexer.
+    function agentAttestation(bytes32 id) external view returns (bytes32 attestHash, uint64 timestamp) {
+        address nansigil = AccessStorage.layout().nansigil;
+        AgentRecord storage a = RegistryStorage.layout().agents[id];
+        if (nansigil == address(0) || a.status == Status.None) return (bytes32(0), 0);
+        return INanSigil(nansigil).latest(a.creator);
     }
 }

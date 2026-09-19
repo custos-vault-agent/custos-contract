@@ -19,6 +19,7 @@ contract InitScript is DeploymentFile {
         CustosCore custos = CustosCore(_must("CUSTOS_PROXY", "custosProxy"));
         PriceOracle oracle = PriceOracle(_must("PRICE_ORACLE", "priceOracle"));
         address vaultFactory = _must("VAULT_FACTORY", "vaultFactory");
+        address nansigil = _addr("NANSIGIL_ADDRESS", "nansigil");
         address market = _must("MARKET_ADDRESS", "market");
         address mon = _must("MON_ADDRESS", "mon");
         address monUsdFeed = _must("MON_USD_FEED", "monUsdFeed");
@@ -35,6 +36,7 @@ contract InitScript is DeploymentFile {
         }
 
         custos.setVaultFactory(vaultFactory);
+        if (nansigil != address(0)) custos.setNanSigil(nansigil);
         custos.setPriceOracle(address(oracle));
         custos.setMarketAdapter(market);
         custos.setMinSeed(minSeed);

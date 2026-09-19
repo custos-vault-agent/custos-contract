@@ -13,8 +13,6 @@ event MarketAllowedChanged(address indexed market, bool allowed);
 
 event PausedChanged(bool paused);
 
-event AttestorChanged(address oldAttestor, address newAttestor);
-
 event MinSeedChanged(uint128 oldMinSeed, uint128 newMinSeed);
 
 event UpgradeAuthorityChanged(address indexed oldAuthority, address indexed newAuthority);
@@ -24,6 +22,8 @@ event YieldSourceAllowedChanged(address indexed yieldSource, bool allowed);
 event PriceOracleChanged(address indexed oldOracle, address indexed newOracle);
 
 event VaultFactoryChanged(address indexed oldFactory, address indexed newFactory);
+
+event NanSigilChanged(address indexed oldNanSigil, address indexed newNanSigil);
 
 event FeedChanged(address indexed token, address indexed aggregator, uint32 maxStaleness);
 
@@ -50,19 +50,6 @@ event AgentAllowanceChanged(bytes32 indexed id, uint128 oldAllowance, uint128 ne
 event AgentPeriodChanged(bytes32 indexed id, uint32 oldPeriodLength, uint32 newPeriodLength);
 
 event AgentPublicChanged(bytes32 indexed id, bool isPublic);
-
-/* ----------------------------- NansenModule --------------------------------- */
-
-/// @dev Full plaintext so an indexer can serve `verifyAttestation` inputs without a side channel.
-event NansenAttestationSubmitted(
-    bytes32 indexed agentId,
-    address indexed wallet,
-    string label,
-    int256 pnl,
-    uint16 winRate,
-    uint64 timestamp,
-    bytes32 attestHash
-);
 
 /* ------------------------------- AgentVault -------------------------------- */
 

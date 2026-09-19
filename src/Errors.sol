@@ -24,15 +24,6 @@ error SeedTooSmall();
 /// @dev H1: yield source must be protocol-allowlisted.
 error YieldSourceNotAllowed();
 
-/* ------------------------------- nansen ---------------------------------- */
-
-error AttestationInvalid();
-/// @dev Signed `wallet` is not the agent's creator.
-error AttestationWalletMismatch();
-/// @dev Payload timestamp is not newer than the stored one (replay), or is in the future.
-error AttestationStale();
-error AttestationHashMismatch();
-
 /* ------------------------------- vault ----------------------------------- */
 
 error OnlyAgent();

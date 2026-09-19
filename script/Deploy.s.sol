@@ -10,7 +10,8 @@ import {CustosProxy} from "../src/CustosProxy.sol";
 import {MockYieldSource} from "../src/adapters/MockYieldSource.sol";
 import {KuruMarketAdapter} from "../src/adapters/KuruMarketAdapter.sol";
 import {IKuruRouter} from "../src/interfaces/IKuruRouter.sol";
-import {NansenModule} from "../src/modules/NansenModule.sol";
+import {NanSigil} from "nansigil-contract/NanSigil.sol";
+import {NanSigilProxy} from "nansigil-contract/NanSigilProxy.sol";
 import {PriceOracle} from "../src/PriceOracle.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
@@ -50,12 +51,12 @@ contract DeployScript is Script {
             )
         );
 
-        address nansenImplementation = address(new NansenModule());
-        NansenModule nansenModule = NansenModule(
+        // NanSigil: deployer is both upgrade authority and attestor for the demo.
+        address nansigilImplementation = address(new NanSigil());
+        NanSigil nansigil = NanSigil(
             address(
-                new CustosProxy(
-                    nansenImplementation,
-                    abi.encodeCall(NansenModule.initialize, (deployer, deployer, address(custos)))
+                new NanSigilProxy(
+                    nansigilImplementation, abi.encodeCall(NanSigil.initialize, (deployer, deployer))
                 )
             )
         );
@@ -91,6 +92,7 @@ contract DeployScript is Script {
 
         custos.setMarketAdapter(address(market));
         custos.setVaultFactory(address(vaultFactory));
+        custos.setNanSigil(address(nansigil));
         custos.setPriceOracle(address(priceOracle));
         custos.setYieldSourceAllowed(address(yieldSource), true); // H1
         custos.setMinSeed(uint128(500 * USDC));
@@ -178,41 +180,17 @@ contract DeployScript is Script {
         AgentVault(vaults[0]).deposit(2_000 * USDC, demoUser);
         vm.stopBroadcast();
 
-        // Nansen: deployer acts as attestor (deferred live integration,
-        // per the design spec). Plaintext lives in demo-nansen.json since
-        // only the hash goes on-chain.
-        bytes32[] memory nansenAgentIds = new bytes32[](2);
-        address[] memory nansenWallets = new address[](2);
-        string[] memory nansenLabels = new string[](2);
-        int256[] memory nansenPnls = new int256[](2);
-        uint256[] memory nansenWinRates = new uint256[](2);
-        uint256[] memory nansenTimestamps = new uint256[](2);
-
-        (
-            nansenAgentIds[0],
-            nansenWallets[0],
-            nansenLabels[0],
-            nansenPnls[0],
-            nansenWinRates[0],
-            nansenTimestamps[0]
-        ) =
-            _submitDemoAttestation(
-                nansenModule, deployerKey, demoUser, agentIds[0], "Smart Trader", 42_000, 61
-            );
-        (
-            nansenAgentIds[1],
-            nansenWallets[1],
-            nansenLabels[1],
-            nansenPnls[1],
-            nansenWinRates[1],
-            nansenTimestamps[1]
-        ) = _submitDemoAttestation(nansenModule, deployerKey, demoUser, agentIds[1], "Fund", 310_000, 58);
+        // NanSigil: deployer signs one attestation for demoUser (the creator of every
+        // demo agent). Plaintext is written to demo-nansen.json since only the hash
+        // is stored on-chain; the event carries it too.
+        uint64 attestedAt =
+            _submitDemoAttestation(nansigil, deployerKey, demoUser, "Smart Trader", 42_000, 61);
 
         string memory json = "deployment";
         vm.serializeAddress(json, "custosProxy", address(custos));
         vm.serializeAddress(json, "custosImplementation", implementation);
-        vm.serializeAddress(json, "nansenModule", address(nansenModule));
-        vm.serializeAddress(json, "nansenModuleImplementation", nansenImplementation);
+        vm.serializeAddress(json, "nansigil", address(nansigil));
+        vm.serializeAddress(json, "nansigilImplementation", nansigilImplementation);
         vm.serializeAddress(json, "usdc", address(usdc));
         vm.serializeAddress(json, "mon", address(mon));
         vm.serializeAddress(json, "market", address(market));
@@ -230,16 +208,15 @@ contract DeployScript is Script {
         vm.writeJson(finalJson, "deployments/anvil.json");
 
         string memory nansenJson = "nansen";
-        vm.serializeBytes32(nansenJson, "agentIds", nansenAgentIds);
-        vm.serializeAddress(nansenJson, "wallets", nansenWallets);
-        vm.serializeString(nansenJson, "labels", nansenLabels);
-        vm.serializeInt(nansenJson, "pnls", nansenPnls);
-        vm.serializeUint(nansenJson, "winRates", nansenWinRates);
-        string memory finalNansenJson = vm.serializeUint(nansenJson, "timestamps", nansenTimestamps);
+        vm.serializeAddress(nansenJson, "wallet", demoUser);
+        vm.serializeString(nansenJson, "label", "Smart Trader");
+        vm.serializeInt(nansenJson, "pnl", int256(42_000));
+        vm.serializeUint(nansenJson, "winRate", 61);
+        string memory finalNansenJson = vm.serializeUint(nansenJson, "timestamp", attestedAt);
         vm.writeJson(finalNansenJson, "deployments/demo-nansen.json");
 
         console2.log("Custos proxy deployed at", address(custos));
-        console2.log("Nansen module deployed at", address(nansenModule));
+        console2.log("NanSigil deployed at", address(nansigil));
     }
 
     /// @dev Private key of a script-derived demo agent wallet — never a
@@ -249,27 +226,19 @@ contract DeployScript is Script {
     }
 
     function _submitDemoAttestation(
-        NansenModule nansenModule,
+        NanSigil nansigil,
         uint256 attestorKey,
         address wallet,
-        bytes32 agentId,
         string memory label,
         int256 pnl,
-        uint256 winRate
-    ) internal returns (bytes32, address, string memory, int256, uint256, uint256) {
-        uint256 timestamp = block.timestamp;
-        bytes32 hash = keccak256(abi.encode(wallet, label, pnl, uint16(winRate), uint64(timestamp)));
+        uint16 winRate
+    ) internal returns (uint64 timestamp) {
+        timestamp = uint64(block.timestamp);
+        bytes32 hash = keccak256(abi.encode(wallet, label, pnl, winRate, timestamp));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(attestorKey, MessageHashUtils.toEthSignedMessageHash(hash));
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        // Pull model: the relayer is whoever holds the signed payload — here the
-        // same key, but it could be the creator or the frontend.
+        // Pull model: any relayer may submit; the demo reuses the deployer key.
         vm.startBroadcast(attestorKey);
-        nansenModule.submitAttestation(
-            agentId, wallet, label, pnl, uint16(winRate), uint64(timestamp), signature
-        );
+        nansigil.submit(wallet, label, pnl, winRate, timestamp, abi.encodePacked(r, s, v));
         vm.stopBroadcast();
-
-        return (agentId, wallet, label, pnl, winRate, timestamp);
     }
 }

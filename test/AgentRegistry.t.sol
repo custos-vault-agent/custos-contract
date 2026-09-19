@@ -44,7 +44,8 @@ contract AgentRegistryTest is Test {
         custos = CustosCore(
             address(
                 new CustosProxy(
-                    address(new CustosCore()), abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
+                    address(new CustosCore()),
+                    abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
                 )
             )
         );
@@ -63,25 +64,20 @@ contract AgentRegistryTest is Test {
         usdc.approve(address(custos), type(uint256).max);
     }
 
-    function test_agentExistsFalseForUnknownId() public {
-        assertFalse(custos.agentExists(bytes32(uint256(0xdead))));
-    }
-
-    function test_agentExistsTrueAfterRegister() public {
-        vm.prank(alice);
-        (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
-        );
-
-        assertTrue(custos.agentExists(id));
-    }
-
     function test_registerAgentDeploysVault() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         AgentVault v = AgentVault(vault);
@@ -102,8 +98,17 @@ contract AgentRegistryTest is Test {
     function test_seedDepositLockedAtDeadAddress() public {
         vm.prank(alice);
         (, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         AgentVault v = AgentVault(vault);
@@ -115,23 +120,50 @@ contract AgentRegistryTest is Test {
         vm.prank(alice);
         vm.expectRevert(SeedTooSmall.selector);
         custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1 * uint128(USDC)
         );
     }
 
     function test_walletCannotBeReregistered() public {
         vm.prank(alice);
         custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
         vm.expectRevert(WalletAlreadyBound.selector);
         custos.registerAgent(
-            bytes32("grid-bot-2"), "another bot", agentWallet, 1_000 * uint128(USDC), 1 days, 500, 1000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot-2"),
+            "another bot",
+            agentWallet,
+            1_000 * uint128(USDC),
+            1 days,
+            500,
+            1000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
     }
 
@@ -139,16 +171,34 @@ contract AgentRegistryTest is Test {
         vm.prank(alice);
         vm.expectRevert(SelfDelegation.selector);
         custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", alice, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            alice,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
     }
 
     function test_pauseBlocksDepositAndTrade() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -160,8 +210,17 @@ contract AgentRegistryTest is Test {
     function test_revokeIsPermanent() public {
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -173,8 +232,17 @@ contract AgentRegistryTest is Test {
     function test_revokedAgentCannotBeResumedOrPaused() public {
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -194,8 +262,17 @@ contract AgentRegistryTest is Test {
     function test_setAllowanceForwardsToVault() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -207,8 +284,17 @@ contract AgentRegistryTest is Test {
     function test_setPeriodForwardsToVault() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -220,8 +306,17 @@ contract AgentRegistryTest is Test {
     function test_setPublicUpdatesRegistryOnly() public {
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);
@@ -233,8 +328,17 @@ contract AgentRegistryTest is Test {
     function test_nonCreatorCannotConfigureAgent() public {
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(agentWallet);
@@ -245,8 +349,17 @@ contract AgentRegistryTest is Test {
     function test_setMarketAllowedForwardsToVault() public {
         vm.prank(alice);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(authority);
@@ -261,8 +374,17 @@ contract AgentRegistryTest is Test {
 
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(authority);
@@ -273,8 +395,17 @@ contract AgentRegistryTest is Test {
     function test_onlyUpgradeAuthorityCanSetMarketAllowed() public {
         vm.prank(alice);
         (bytes32 id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
 
         vm.prank(alice);

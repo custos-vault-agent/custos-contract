@@ -32,19 +32,6 @@
   },
   {
     "type": "function",
-    "name": "custosCore",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "initialize",
     "inputs": [
       {
@@ -56,15 +43,34 @@
         "name": "attestor_",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "custosCore_",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "latest",
+    "inputs": [
+      {
+        "name": "wallet",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "attestHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -94,13 +100,8 @@
   },
   {
     "type": "function",
-    "name": "submitAttestation",
+    "name": "submit",
     "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
       {
         "name": "wallet",
         "type": "address",
@@ -181,13 +182,8 @@
   },
   {
     "type": "function",
-    "name": "verifyAttestation",
+    "name": "verify",
     "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
       {
         "name": "wallet",
         "type": "address",
@@ -229,47 +225,22 @@
     "stateMutability": "view"
   },
   {
-    "type": "event",
-    "name": "AttestorChanged",
-    "inputs": [
+    "type": "function",
+    "name": "version",
+    "inputs": [],
+    "outputs": [
       {
-        "name": "oldAttestor",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "newAttestor",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
+        "name": "",
+        "type": "string",
+        "internalType": "string"
       }
     ],
-    "anonymous": false
+    "stateMutability": "pure"
   },
   {
     "type": "event",
-    "name": "Initialized",
+    "name": "AttestationSubmitted",
     "inputs": [
-      {
-        "name": "version",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "NansenAttestationSubmitted",
-    "inputs": [
-      {
-        "name": "agentId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
       {
         "name": "wallet",
         "type": "address",
@@ -305,6 +276,38 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AttestorChanged",
+    "inputs": [
+      {
+        "name": "oldAttestor",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newAttestor",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Initialized",
+    "inputs": [
+      {
+        "name": "version",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -360,11 +363,6 @@
   {
     "type": "error",
     "name": "AttestationStale",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "AttestationWalletMismatch",
     "inputs": []
   },
   {
@@ -445,11 +443,6 @@
         "internalType": "bytes32"
       }
     ]
-  },
-  {
-    "type": "error",
-    "name": "UnknownAgent",
-    "inputs": []
   },
   {
     "type": "error",

@@ -10,8 +10,8 @@ enum Status {
     Revoked
 }
 
-/// @notice One agent's registry record. Its vault (AgentVault) and Nansen attestation
-///         (NansenModule) live in separate contracts — spec v1 D13.
+/// @notice One agent's registry record. Its vault (AgentVault) is a separate contract
+///         (spec v1 D13); its creator's reputation lives in NanSigil, keyed by wallet.
 /// @dev Slot layout (spec v1 §3.1) — never reorder after deploy:
 ///        0: name
 ///        1: wallet (160) + status (8)

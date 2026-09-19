@@ -51,20 +51,7 @@
   },
   {
     "type": "function",
-    "name": "agentCount",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "agentExists",
+    "name": "agentAttestation",
     "inputs": [
       {
         "name": "id",
@@ -74,9 +61,27 @@
     ],
     "outputs": [
       {
+        "name": "attestHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "agentCount",
+    "inputs": [],
+    "outputs": [
+      {
         "name": "",
-        "type": "bool",
-        "internalType": "bool"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -286,6 +291,19 @@
         "name": "",
         "type": "uint128",
         "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nansigil",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -524,6 +542,19 @@
         "name": "amount",
         "type": "uint128",
         "internalType": "uint128"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setNanSigil",
+    "inputs": [
+      {
+        "name": "nansigil_",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -932,6 +963,25 @@
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NanSigilChanged",
+    "inputs": [
+      {
+        "name": "oldNanSigil",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newNanSigil",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false

@@ -18,6 +18,7 @@ import {
     AuroraReceiverChanged,
     MarketAdapterChanged,
     MinSeedChanged,
+    NanSigilChanged,
     PausedChanged,
     PriceOracleChanged,
     UpgradeAuthorityChanged,
@@ -95,6 +96,13 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         $.vaultFactory = factory;
     }
 
+    /// @dev Where `agentAttestation` looks up the creator's reputation. address(0) disables it.
+    function setNanSigil(address nansigil_) external onlyUpgradeAuthority {
+        AccessLayout storage $ = AccessStorage.layout();
+        emit NanSigilChanged($.nansigil, nansigil_);
+        $.nansigil = nansigil_;
+    }
+
     /// @dev H1: a yield source holds subscriber funds, so it is protocol-gated like markets.
     function setYieldSourceAllowed(address yieldSource, bool allowed) external onlyUpgradeAuthority {
         AccessStorage.layout().allowedYieldSources[yieldSource] = allowed;
@@ -147,6 +155,10 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     function vaultFactory() external view returns (address) {
         return AccessStorage.layout().vaultFactory;
+    }
+
+    function nansigil() external view returns (address) {
+        return AccessStorage.layout().nansigil;
     }
 
     function isYieldSourceAllowed(address yieldSource) external view returns (bool) {

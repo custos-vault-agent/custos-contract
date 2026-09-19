@@ -13,6 +13,7 @@ struct AccessLayout {
     address priceOracle; // PriceOracle (H2) — frozen into each vault at deploy
     mapping(address yieldSource => bool allowed) allowedYieldSources; // H1
     address vaultFactory; // standalone VaultFactory — AgentVault initcode is no longer in CustosCore
+    address nansigil; // INanSigil: creator reputation, looked up by wallet
 }
 
 library AccessStorage {
