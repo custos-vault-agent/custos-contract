@@ -7,3 +7,6 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "lib/nansigil-contract"]
+	path = lib/nansigil-contract
+	url = https://github.com/custos-vault-agent/nansigil-contract

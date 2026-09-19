@@ -9,8 +9,6 @@ via_ir = true
 # Deploy.s.sol/Upgrade.s.sol write/read deployments/anvil.json — the single
 # source of truth for addresses shared with custos-web and Envio.
 fs_permissions = [{ access = "read-write", path = "./deployments" }]
-# NanSigil lives in its own repo; until it is a submodule it is the sibling checkout.
-allow_paths = ["../nansigil-contract"]
 
 [fmt]
 line_length = 110
