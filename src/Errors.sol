@@ -26,8 +26,11 @@ error YieldSourceNotAllowed();
 
 /* ------------------------------- nansen ---------------------------------- */
 
-error NotAttestor();
 error AttestationInvalid();
+/// @dev Signed `wallet` is not the agent's creator.
+error AttestationWalletMismatch();
+/// @dev Payload timestamp is not newer than the stored one (replay), or is in the future.
+error AttestationStale();
 error AttestationHashMismatch();
 
 /* ------------------------------- vault ----------------------------------- */

@@ -7,9 +7,17 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import {Attestation, NansenLayout, NansenStorage} from "../storage/NansenStorage.sol";
-import {AttestationInvalid, NotAttestor, NotUpgradeAuthority, UnknownAgent, ZeroAddress} from "../Errors.sol";
+import {
+    AttestationInvalid,
+    AttestationStale,
+    AttestationWalletMismatch,
+    NotUpgradeAuthority,
+    UnknownAgent,
+    ZeroAddress
+} from "../Errors.sol";
 import {AttestorChanged, NansenAttestationSubmitted, UpgradeAuthorityChanged} from "../Events.sol";
-import {IAgentRegistryExists} from "../interfaces/IAgentRegistryExists.sol";
+import {IAgentRegistry} from "../interfaces/IAgentRegistry.sol";
+import {AgentRecord, Status} from "../Types.sol";
 
 /// @notice Attestation Nansen on-chain (spec v1 D23, §4.2, §12) — split out of
 ///         CustosCore purely to bring CustosCore back under the EIP-170
@@ -26,11 +34,6 @@ contract NansenModule is Initializable, UUPSUpgradeable {
 
     modifier onlyUpgradeAuthority() {
         if (msg.sender != NansenStorage.layout().upgradeAuthority) revert NotUpgradeAuthority();
-        _;
-    }
-
-    modifier onlyAttestor() {
-        if (msg.sender != NansenStorage.layout().attestor) revert NotAttestor();
         _;
     }
 
@@ -61,21 +64,43 @@ contract NansenModule is Initializable, UUPSUpgradeable {
         $.attestor = newAttestor;
     }
 
-    /// @param attestHash keccak256(abi.encode(wallet, label, pnl, winRate, timestamp)).
-    /// @param signature ECDSA.sign(attestorKey, toEthSignedMessageHash(attestHash)).
-    function submitAttestation(bytes32 agentId, bytes32 attestHash, bytes calldata signature)
-        external
-        onlyAttestor
-    {
-        address signer = ECDSA.recoverCalldata(MessageHashUtils.toEthSignedMessageHash(attestHash), signature);
-        if (signer != msg.sender) revert AttestationInvalid();
+    /// @dev Skew tolerated on the payload timestamp; the attestor's clock vs. the chain's.
+    uint64 internal constant MAX_FUTURE = 5 minutes;
 
+    /// @notice Pull model (like Pyth's `updatePriceFeeds`): anyone may relay a payload
+    ///         the attestor signed off-chain. The contract binds it to the agent
+    ///         (`wallet` must be the creator) and refuses replays (timestamp must be
+    ///         newer than the stored one).
+    /// @param signature ECDSA over toEthSignedMessageHash(keccak256(abi.encode(
+    ///        wallet, label, pnl, winRate, timestamp))), by `attestor`.
+    function submitAttestation(
+        bytes32 agentId,
+        address wallet,
+        string calldata label,
+        int256 pnl,
+        uint16 winRate,
+        uint64 timestamp,
+        bytes calldata signature
+    ) external {
         NansenLayout storage $ = NansenStorage.layout();
-        if (!IAgentRegistryExists($.custosCore).agentExists(agentId)) revert UnknownAgent();
 
-        $.attestations[agentId] = Attestation({attestHash: attestHash, signature: signature});
+        AgentRecord memory agent = IAgentRegistry($.custosCore).getAgent(agentId);
+        if (agent.status == Status.None) revert UnknownAgent();
+        if (agent.creator != wallet) revert AttestationWalletMismatch();
 
-        emit NansenAttestationSubmitted(agentId, attestHash, uint64(block.timestamp));
+        Attestation storage current = $.attestations[agentId];
+        if (timestamp <= current.timestamp || timestamp > block.timestamp + MAX_FUTURE) {
+            revert AttestationStale();
+        }
+
+        bytes32 attestHash = keccak256(abi.encode(wallet, label, pnl, winRate, timestamp));
+        address signer = ECDSA.recoverCalldata(MessageHashUtils.toEthSignedMessageHash(attestHash), signature);
+        if (signer != $.attestor) revert AttestationInvalid();
+
+        $.attestations[agentId] =
+            Attestation({attestHash: attestHash, signature: signature, timestamp: timestamp});
+
+        emit NansenAttestationSubmitted(agentId, wallet, label, pnl, winRate, timestamp, attestHash);
     }
 
     /// @notice Verifies an attestation — view, callable by anyone.

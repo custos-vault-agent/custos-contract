@@ -10,7 +10,6 @@ import {AgentRecord, Status} from "../Types.sol";
 import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
-import {IAgentRegistryExists} from "../interfaces/IAgentRegistryExists.sol";
 import {IVaultFactory} from "../interfaces/IVaultFactory.sol";
 import {
     AgentAlreadyRevoked,
@@ -39,7 +38,7 @@ import {
 ///         agent's `AgentVault`.
 ///
 /// @dev Every function here is signed by the creator, never by the agent.
-abstract contract AgentRegistry is AccessControl, IAgentRegistryExists {
+abstract contract AgentRegistry is AccessControl {
     using SafeERC20 for IERC20;
 
     /// @param yieldSource `address(0)` disables idle yield for this vault (D22).

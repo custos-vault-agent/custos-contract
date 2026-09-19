@@ -8,7 +8,13 @@ import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {VaultFactory} from "../src/VaultFactory.sol";
 import {NansenModule} from "../src/modules/NansenModule.sol";
-import {AttestationInvalid, NotAttestor, NotUpgradeAuthority, UnknownAgent} from "../src/Errors.sol";
+import {
+    AttestationInvalid,
+    AttestationStale,
+    AttestationWalletMismatch,
+    NotUpgradeAuthority,
+    UnknownAgent
+} from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {PriceOracle} from "../src/PriceOracle.sol";
 
@@ -19,6 +25,7 @@ contract NansenModuleTest is Test {
 
     address internal authority = makeAddr("authority");
     address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
     address internal agentWallet = makeAddr("agentWallet");
 
     uint256 internal constant USDC = 1e6;
@@ -33,7 +40,8 @@ contract NansenModuleTest is Test {
         custos = CustosCore(
             address(
                 new CustosProxy(
-                    address(new CustosCore()), abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
+                    address(new CustosCore()),
+                    abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
                 )
             )
         );
@@ -63,90 +71,116 @@ contract NansenModuleTest is Test {
     function _registerAgent() internal returns (bytes32 id) {
         vm.prank(alice);
         (id,) = custos.registerAgent(
-            bytes32("grid-bot"), "trading bot", agentWallet, 4_000 * uint128(USDC), 1 days, 1000, 2000,
-            address(0), 7000, true, 1_000 * uint128(USDC)
+            bytes32("grid-bot"),
+            "trading bot",
+            agentWallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
         );
     }
 
     function _sign(bytes32 hash) internal view returns (bytes memory) {
-        bytes32 ethHash = MessageHashUtils.toEthSignedMessageHash(hash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attestorKey, ethHash);
+        return _signWith(attestorKey, hash);
+    }
+
+    function _signWith(uint256 key, bytes32 hash) internal pure returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, MessageHashUtils.toEthSignedMessageHash(hash));
         return abi.encodePacked(r, s, v);
     }
 
-    function test_submitAttestationByAttestor() public {
+    function _hash(address wallet, string memory label, int256 pnl, uint16 winRate, uint64 ts)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(wallet, label, pnl, winRate, ts));
+    }
+
+    /// @dev Anyone relays; `from` is the relayer, the payload is signed by `key`.
+    function _submit(
+        address from,
+        uint256 key,
+        bytes32 id,
+        address wallet,
+        string memory label,
+        int256 pnl,
+        uint16 winRate,
+        uint64 ts
+    ) internal {
+        bytes memory sig = _signWith(key, _hash(wallet, label, pnl, winRate, ts));
+        vm.prank(from);
+        nansen.submitAttestation(id, wallet, label, pnl, winRate, ts, sig);
+    }
+
+    function test_anyoneCanRelayAttestorSignedPayload() public {
         bytes32 id = _registerAgent();
-        bytes32 attestHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
+        uint64 ts = uint64(block.timestamp);
 
-        vm.prank(attestorAddr);
-        nansen.submitAttestation(id, attestHash, _sign(attestHash));
+        _submit(bob, attestorKey, id, alice, "Smart Trader", 42_000, 61, ts); // bob is not the attestor
 
-        (bool valid, address signer) =
-            nansen.verifyAttestation(id, alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1));
+        (bool valid, address signer) = nansen.verifyAttestation(id, alice, "Smart Trader", 42_000, 61, ts);
         assertTrue(valid);
         assertEq(signer, attestorAddr);
     }
 
-    function test_submitAttestationNotAttestorReverts() public {
-        bytes32 id = _registerAgent();
-        bytes32 attestHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
-
-        vm.prank(alice);
-        vm.expectRevert(NotAttestor.selector);
-        nansen.submitAttestation(id, attestHash, _sign(attestHash));
-    }
-
     function test_submitAttestationUnknownAgentReverts() public {
-        bytes32 unknownId = bytes32(uint256(0xdead));
-        bytes32 attestHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
-
-        vm.prank(attestorAddr);
         vm.expectRevert(UnknownAgent.selector);
-        nansen.submitAttestation(unknownId, attestHash, _sign(attestHash));
+        _submit(bob, attestorKey, bytes32(uint256(0xdead)), alice, "Smart Trader", 42_000, 61, 1);
     }
 
     function test_submitAttestationWrongSignerReverts() public {
         bytes32 id = _registerAgent();
-        bytes32 attestHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
-        uint256 wrongKey = 0xB0B;
-        bytes32 ethHash = MessageHashUtils.toEthSignedMessageHash(attestHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethHash);
-
-        vm.prank(attestorAddr);
         vm.expectRevert(AttestationInvalid.selector);
-        nansen.submitAttestation(id, attestHash, abi.encodePacked(r, s, v));
+        _submit(bob, 0xB0B, id, alice, "Smart Trader", 42_000, 61, uint64(block.timestamp));
+    }
+
+    function test_submitAttestationForOtherWalletReverts() public {
+        bytes32 id = _registerAgent(); // creator is alice
+        vm.expectRevert(AttestationWalletMismatch.selector);
+        _submit(bob, attestorKey, id, bob, "Fund", 1, 1, uint64(block.timestamp));
+    }
+
+    function test_replayOfOlderPayloadReverts() public {
+        bytes32 id = _registerAgent();
+        uint64 ts = uint64(block.timestamp);
+        _submit(bob, attestorKey, id, alice, "Fund", 90_000, 65, ts);
+
+        vm.expectRevert(AttestationStale.selector);
+        _submit(bob, attestorKey, id, alice, "Smart Trader", 42_000, 61, ts); // same timestamp
+        vm.expectRevert(AttestationStale.selector);
+        _submit(bob, attestorKey, id, alice, "Smart Trader", 42_000, 61, ts - 1); // older
+    }
+
+    function test_futureTimestampReverts() public {
+        bytes32 id = _registerAgent();
+        vm.expectRevert(AttestationStale.selector);
+        _submit(bob, attestorKey, id, alice, "Fund", 1, 1, uint64(block.timestamp + 6 minutes));
+        _submit(bob, attestorKey, id, alice, "Fund", 1, 1, uint64(block.timestamp + 4 minutes)); // within skew
     }
 
     function test_verifyAttestationWrongDataReturnsFalse() public {
         bytes32 id = _registerAgent();
-        bytes32 attestHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
+        uint64 ts = uint64(block.timestamp);
+        _submit(bob, attestorKey, id, alice, "Smart Trader", 42_000, 61, ts);
 
-        vm.prank(attestorAddr);
-        nansen.submitAttestation(id, attestHash, _sign(attestHash));
-
-        (bool valid,) = nansen.verifyAttestation(id, alice, "Fund", int256(42_000), uint16(6100), uint64(1));
+        (bool valid,) = nansen.verifyAttestation(id, alice, "Fund", 42_000, 61, ts);
         assertFalse(valid);
     }
 
     function test_reattestationOverwritesPrevious() public {
         bytes32 id = _registerAgent();
-        bytes32 firstHash =
-            keccak256(abi.encode(alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1)));
-        bytes32 secondHash = keccak256(abi.encode(alice, "Fund", int256(90_000), uint16(6500), uint64(2)));
+        uint64 ts = uint64(block.timestamp);
+        _submit(bob, attestorKey, id, alice, "Smart Trader", 42_000, 61, ts);
+        _submit(bob, attestorKey, id, alice, "Fund", 90_000, 65, ts + 1);
 
-        vm.prank(attestorAddr);
-        nansen.submitAttestation(id, firstHash, _sign(firstHash));
-        vm.prank(attestorAddr);
-        nansen.submitAttestation(id, secondHash, _sign(secondHash));
-
-        (bool validOld,) =
-            nansen.verifyAttestation(id, alice, "Smart Trader", int256(42_000), uint16(6100), uint64(1));
-        (bool validNew,) = nansen.verifyAttestation(id, alice, "Fund", int256(90_000), uint16(6500), uint64(2));
+        (bool validOld,) = nansen.verifyAttestation(id, alice, "Smart Trader", 42_000, 61, ts);
+        (bool validNew,) = nansen.verifyAttestation(id, alice, "Fund", 90_000, 65, ts + 1);
         assertFalse(validOld);
         assertTrue(validNew);
     }

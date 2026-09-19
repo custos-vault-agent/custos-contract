@@ -195,7 +195,10 @@ contract DeployScript is Script {
             nansenPnls[0],
             nansenWinRates[0],
             nansenTimestamps[0]
-        ) = _submitDemoAttestation(nansenModule, deployerKey, demoUser, agentIds[0], "Smart Trader", 42_000, 61);
+        ) =
+            _submitDemoAttestation(
+                nansenModule, deployerKey, demoUser, agentIds[0], "Smart Trader", 42_000, 61
+            );
         (
             nansenAgentIds[1],
             nansenWallets[1],
@@ -253,17 +256,18 @@ contract DeployScript is Script {
         string memory label,
         int256 pnl,
         uint256 winRate
-    )
-        internal
-        returns (bytes32, address, string memory, int256, uint256, uint256)
-    {
+    ) internal returns (bytes32, address, string memory, int256, uint256, uint256) {
         uint256 timestamp = block.timestamp;
         bytes32 hash = keccak256(abi.encode(wallet, label, pnl, uint16(winRate), uint64(timestamp)));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(attestorKey, MessageHashUtils.toEthSignedMessageHash(hash));
         bytes memory signature = abi.encodePacked(r, s, v);
 
+        // Pull model: the relayer is whoever holds the signed payload — here the
+        // same key, but it could be the creator or the frontend.
         vm.startBroadcast(attestorKey);
-        nansenModule.submitAttestation(agentId, hash, signature);
+        nansenModule.submitAttestation(
+            agentId, wallet, label, pnl, uint16(winRate), uint64(timestamp), signature
+        );
         vm.stopBroadcast();
 
         return (agentId, wallet, label, pnl, winRate, timestamp);

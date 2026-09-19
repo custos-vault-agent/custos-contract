@@ -53,7 +53,16 @@ event AgentPublicChanged(bytes32 indexed id, bool isPublic);
 
 /* ----------------------------- NansenModule --------------------------------- */
 
-event NansenAttestationSubmitted(bytes32 indexed agentId, bytes32 attestHash, uint64 timestamp);
+/// @dev Full plaintext so an indexer can serve `verifyAttestation` inputs without a side channel.
+event NansenAttestationSubmitted(
+    bytes32 indexed agentId,
+    address indexed wallet,
+    string label,
+    int256 pnl,
+    uint16 winRate,
+    uint64 timestamp,
+    bytes32 attestHash
+);
 
 /* ------------------------------- AgentVault -------------------------------- */
 

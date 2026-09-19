@@ -102,9 +102,29 @@
         "internalType": "bytes32"
       },
       {
-        "name": "attestHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "wallet",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "label",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "pnl",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "winRate",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "internalType": "uint64"
       },
       {
         "name": "signature",
@@ -251,16 +271,40 @@
         "internalType": "bytes32"
       },
       {
-        "name": "attestHash",
-        "type": "bytes32",
+        "name": "wallet",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "label",
+        "type": "string",
         "indexed": false,
-        "internalType": "bytes32"
+        "internalType": "string"
+      },
+      {
+        "name": "pnl",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      },
+      {
+        "name": "winRate",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
       },
       {
         "name": "timestamp",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
+      },
+      {
+        "name": "attestHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
       }
     ],
     "anonymous": false
@@ -315,6 +359,16 @@
   },
   {
     "type": "error",
+    "name": "AttestationStale",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AttestationWalletMismatch",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ECDSAInvalidSignature",
     "inputs": []
   },
@@ -364,11 +418,6 @@
   {
     "type": "error",
     "name": "InvalidInitialization",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotAttestor",
     "inputs": []
   },
   {

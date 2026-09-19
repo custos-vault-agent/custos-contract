@@ -5,13 +5,14 @@ pragma solidity ^0.8.24;
 struct NansenLayout {
     address upgradeAuthority;
     address attestor; // signs Nansen attestations (D23)
-    address custosCore; // registry used for agentExists(); set once, no setter
+    address custosCore; // registry used for getAgent(); set once, no setter
     mapping(bytes32 agentId => Attestation) attestations;
 }
 
 struct Attestation {
     bytes32 attestHash;
     bytes signature;
+    uint64 timestamp; // from the signed payload; a submission must be newer than this
 }
 
 library NansenStorage {
