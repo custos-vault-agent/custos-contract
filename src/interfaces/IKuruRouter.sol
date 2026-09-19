@@ -1,31 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice Router Kuru — satu-satunya fungsi yang dipanggil Custos.
+/// @notice Kuru router — the one function Custos calls.
 ///
-/// @dev Tanda tangan disalin dari ABI resmi kuru-sdk (`abi/Router.json`), bukan dari
-///      dokumentasi: implementasi router di mainnet tidak terverifikasi di explorer, jadi
-///      ABI SDK adalah sumber kebenaran yang tersedia. Router mainnet Monad berada di
-///      `0xd651346d7c789536ebf06dc72aE3C8502cd695CC` (proxy ERC-1967).
+/// @dev Signature copied from kuru-sdk's `abi/Router.json`; the mainnet router
+///      implementation (`0xd651346d7c789536ebf06dc72aE3C8502cd695CC`, ERC-1967) is
+///      unverified on the explorer, so the SDK ABI is the available source of truth.
 ///
-///      **Kenapa lewat router, bukan langsung ke orderbook.** `placeAndExecuteMarketBuy`
-///      dan `placeAndExecuteMarketSell` di orderbook menerima ukuran dalam *unit presisi*
-///      (`uint96`, diskalakan `sizePrecision`/`pricePrecision`), sementara `anyToAnySwap`
-///      menerima jumlah dalam **desimal token apa adanya**. Konversi presisi itu persis
-///      kelas kesalahan yang sudah dibuang sekali dari spec ini saat `size × worstPrice`
-///      diganti (§4.4); tidak ada alasan memasukkannya kembali lewat pintu belakang.
+///      Via the router, not the orderbook directly: the orderbook's market-order
+///      functions take sizes in precision units (`uint96`, scaled by
+///      `sizePrecision`/`pricePrecision`) while `anyToAnySwap` takes raw token
+///      decimals — one less conversion to get wrong.
 interface IKuruRouter {
-    /// @notice Menukar `_amount` `_debitToken` menjadi `_creditToken` lewat satu atau
-    ///         beberapa orderbook.
+    /// @notice Swaps `_amount` of `_debitToken` into `_creditToken` through one or more
+    ///         orderbooks.
     ///
-    /// @param _marketAddresses Rute: alamat orderbook per hop.
-    /// @param _isBuy Arah tiap hop, sejajar dengan `_marketAddresses`.
-    /// @param _nativeSend Apakah hop mengirim MON native. Custos selalu `false` — dana
-    ///        yang dikelola Custos adalah ERC-20, dan `msg.value` tidak pernah dipakai.
-    /// @param _debitToken Token yang dibelanjakan; router menariknya dari `msg.sender`.
-    /// @param _creditToken Token yang diterima; router mengirimnya ke `msg.sender`.
-    /// @param _amount Jumlah `_debitToken`, dalam desimal token.
-    /// @param _minAmountOut Batas slippage; router revert bila tidak tercapai.
+    /// @param _marketAddresses Route: one orderbook per hop.
+    /// @param _isBuy Direction per hop, aligned with `_marketAddresses`.
+    /// @param _nativeSend Whether a hop sends native MON. Always `false` for Custos.
+    /// @param _debitToken Token spent; the router pulls it from `msg.sender`.
+    /// @param _creditToken Token received; the router sends it to `msg.sender`.
+    /// @param _amount Amount of `_debitToken`, in token decimals.
+    /// @param _minAmountOut Slippage bound; the router reverts if not met.
     function anyToAnySwap(
         address[] calldata _marketAddresses,
         bool[] calldata _isBuy,

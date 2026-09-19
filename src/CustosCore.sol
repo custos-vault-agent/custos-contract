@@ -3,12 +3,11 @@ pragma solidity ^0.8.24;
 
 import {AgentRegistry} from "./modules/AgentRegistry.sol";
 
-/// @title Custos — registry dan vault factory untuk trading lintas rantai di Kuru.
+/// @title Custos — agent registry for cross-chain trading on Kuru.
 ///
-/// @dev Satu kontrak implementation. Perbedaan terbesar dari v0.1 (`CustosLogic`):
-///      dana dan trading tidak lagi hidup di sini sama sekali — setiap agent punya
-///      `AgentVault` sendiri, immutable, di-deploy lewat `VaultFactory`. CustosCore
-///      yang tersisa murni registry + otorisasi + Nansen attestation.
+/// @dev Single UUPS implementation. No funds or trading live here: every agent has
+///      its own immutable `AgentVault`, deployed through `VaultFactory`. What remains
+///      is registry + authorization.
 contract CustosCore is AgentRegistry {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

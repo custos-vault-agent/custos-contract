@@ -1,20 +1,35 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {AgentVault} from "../AgentVault.sol";
+import {AgentVault} from "./AgentVault.sol";
+import {IVaultFactory} from "./interfaces/IVaultFactory.sol";
+import {OnlyCustosCore, ZeroAddress} from "./Errors.sol";
 
-/// @notice Deploy `AgentVault` lewat `create2`. Fungsi `internal` — hanya bisa
-///         dipanggil dari kontrak yang mewarisinya, tidak pernah dari luar.
+/// @notice Deploys `AgentVault` via `create2`. A standalone contract, not a module
+///         inherited by CustosCore: AgentVault's ~13 KB initcode is embedded in
+///         whichever contract calls `new AgentVault`, which pushed CustosCore over
+///         EIP-170.
 ///
-/// @dev `salt = agentId` membuat alamat vault deterministik dan bisa dihitung
-///      off-chain sebelum transaksi register dikirim (spec v1 §4.4).
-abstract contract VaultFactory {
-    function _deployVault(
+/// @dev Not upgradeable. When AgentVault changes, deploy a new factory and call
+///      `CustosCore.setVaultFactory`; existing vaults are untouched.
+///
+///      `salt = agentId` makes vault addresses deterministic (spec v1 §4.4), based on
+///      this factory's address. `onlyCore` stops anyone deploying orphan vaults with
+///      the same salt; the vault's `custosCore` is always `msg.sender` = the proxy.
+contract VaultFactory is IVaultFactory {
+    address public immutable core;
+
+    constructor(address core_) {
+        if (core_ == address(0)) revert ZeroAddress();
+        core = core_;
+    }
+
+    function deploy(
         bytes32 agentId,
         address creator,
         address agent,
         address asset,
-        address marketAdapter,
+        address priceOracle,
         address yieldSource,
         uint16 feeRate,
         uint16 maxDrawdownBps,
@@ -22,16 +37,17 @@ abstract contract VaultFactory {
         uint128 allowance,
         uint32 periodLength,
         bytes32 name
-    ) internal returns (address vault) {
+    ) external returns (address vault) {
+        if (msg.sender != core) revert OnlyCustosCore();
         (string memory tokenName, string memory tokenSymbol) = _tokenNames(name, agentId);
         vault = address(
             new AgentVault{salt: agentId}(
                 agentId,
                 creator,
                 agent,
-                address(this),
+                msg.sender,
                 asset,
-                marketAdapter,
+                priceOracle,
                 yieldSource,
                 feeRate,
                 maxDrawdownBps,
@@ -44,9 +60,8 @@ abstract contract VaultFactory {
         );
     }
 
-    /// @dev `name` disimpan on-chain sebagai `bytes32` (D9) tapi ERC-20 butuh
-    ///      `string` — dikonversi di sini, sekali, saat deploy, bukan setiap kali
-    ///      token metadata dibaca.
+    /// @dev `name` is stored as `bytes32` (D9) but ERC-20 wants `string`; converted
+    ///      once at deploy.
     function _tokenNames(bytes32 name, bytes32 agentId)
         internal
         pure
@@ -66,8 +81,8 @@ abstract contract VaultFactory {
         return string(result);
     }
 
-    /// @dev 4 byte pertama dari agentId, hex, tanpa prefix "0x" — cukup unik untuk
-    ///      simbol token yang dibaca manusia, tidak diklaim sebagai tabrakan-bebas.
+    /// @dev First 4 bytes of agentId as hex, no "0x" — unique enough for a symbol,
+    ///      not claimed collision-free.
     function _toHexShort(bytes32 data) internal pure returns (string memory) {
         bytes memory alphabet = "0123456789abcdef";
         bytes memory result = new bytes(8);

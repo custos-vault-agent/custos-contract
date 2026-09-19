@@ -6,9 +6,11 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 import {NansenModule} from "../src/modules/NansenModule.sol";
 import {AttestationInvalid, NotAttestor, NotUpgradeAuthority, UnknownAgent} from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
 
 contract NansenModuleTest is Test {
     CustosCore internal custos;
@@ -38,6 +40,8 @@ contract NansenModuleTest is Test {
         vm.startPrank(authority);
         custos.setMinSeed(MIN_SEED);
         custos.setMarketAdapter(makeAddr("market")); // never called in these tests, just non-zero
+        custos.setPriceOracle(address(new PriceOracle(authority, address(usdc)))); // idem
+        custos.setVaultFactory(address(new VaultFactory(address(custos))));
         vm.stopPrank();
 
         attestorAddr = vm.addr(attestorKey);

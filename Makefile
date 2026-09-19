@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: anvil build test abi deploy upgrade addresses
+.PHONY: anvil build test abi deploy deployMock deployCore init upgrade upgradeCore addresses
 
 anvil:
 	anvil
@@ -18,6 +18,7 @@ abi: build
 	jq '.abi' out/AgentVault.sol/AgentVault.json > abi/AgentVault.json
 	jq '.abi' out/NansenModule.sol/NansenModule.json > abi/NansenModule.json
 	jq '.abi' out/MockERC20.sol/MockERC20.json > abi/MockERC20.json
+	jq '.abi' out/MockAuroraReceiver.sol/MockAuroraReceiver.json > abi/MockAuroraReceiver.json
 
 # --slow: Deploy.s.sol broadcasts from several different senders (deployer,
 # demo user, script-derived agent wallets) where a later sender's tx
@@ -32,6 +33,27 @@ deploy: build
 upgrade: build
 	mkdir -p deployments
 	forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+# Jalur bertahap untuk jaringan nyata (Monad testnet) — tiap langkah meng-upsert
+# key-nya sendiri di DEPLOYMENT_FILE (default deployments/anvil.json), jadi bisa
+# dicampur dengan alamat asli lewat env (USDC_ADDRESS, MON_USD_FEED, dst.).
+#   deployMock  → token/pasar/yield/feed palsu (skip kalau semua sudah ada)
+#   deployCore  → CustosCore, NansenModule, VaultFactory, PriceOracle
+#   init        → konfigurasi upgradeAuthority; wajib sebelum registerAgent
+#   upgradeCore → implementation CustosCore baru ke proxy yang ada
+deployMock: build
+	mkdir -p deployments
+	forge script script/DeployMock.s.sol:DeployMockScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+deployCore: build
+	mkdir -p deployments
+	forge script script/DeployCore.s.sol:DeployCoreScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+init: build
+	forge script script/Init.s.sol:InitScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+upgradeCore: build
+	UPGRADE_TARGET=core forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
 
 # Groups deployments/anvil.json's flat address fields by ABI'd contract name
 # (matching abi/*.json) and writes deployments/addresses.json, then prints a

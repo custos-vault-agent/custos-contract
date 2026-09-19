@@ -10,16 +10,22 @@ import {
 } from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
+import {MockCustosCore} from "./mocks/MockCustosCore.sol";
+import {MockAggregator} from "./mocks/MockAggregator.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
+import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
 
 contract AgentVaultTest is Test {
     AgentVault internal vault;
     MockERC20 internal usdc;
     MockERC20 internal mon;
     MockMarket internal market;
+    PriceOracle internal oracle;
+    MockAggregator internal monFeed;
 
     address internal creator = makeAddr("creator");
     address internal agentWallet = makeAddr("agentWallet");
-    address internal custosCore = makeAddr("custosCore");
+    address internal custosCore = address(new MockCustosCore());
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
@@ -32,6 +38,10 @@ contract AgentVaultTest is Test {
         market = new MockMarket(address(mon), address(usdc), 2 * USDC, 1 * MON);
         mon.mint(address(market), 1_000_000 * MON);
         usdc.mint(address(market), 1_000_000 * USDC);
+        // MON/USD feed, 8 desimal, 2 USD — cocok dengan harga MockMarket.
+        monFeed = new MockAggregator(8, 2e8);
+        oracle = new PriceOracle(address(this), address(usdc));
+        oracle.setFeed(address(mon), AggregatorV3Interface(address(monFeed)), 1 days);
 
         vault = new AgentVault(
             keccak256("agent-1"),
@@ -39,7 +49,7 @@ contract AgentVaultTest is Test {
             agentWallet,
             custosCore,
             address(usdc),
-            address(market), // marketAdapter — MockMarket doubles as IMarket here
+            address(oracle), // priceOracle
             address(0), // yieldSource disabled for this test
             1000, // feeRate 10%
             2000, // maxDrawdownBps 20%
@@ -231,12 +241,12 @@ contract AgentVaultTest is Test {
         vault.executeSwap(address(market), true, uint128(1_000 * USDC), 0, 0);
         uint256 priceAfter = vault.totalAssets() * 1e18 / vault.totalSupply();
 
-        // totalAssets() only counts the accounting asset (USDC) + yield position —
-        // MON received from the buy sits in the vault as an untracked asset for now,
-        // so a pure buy looks like a loss until it's sold back. That is itself worth
-        // asserting: it is the reason `totalAssets` must stay denominated in one
-        // asset (D4), never mark-to-market a base token position.
-        assertLt(priceAfter, priceBefore);
+        // H2: MON yang dibeli dinilai lewat oracle (2 USD, sama dengan harga market),
+        // jadi buy wajar tidak mengubah share price. Baru pergerakan harga MON yang
+        // mengubahnya.
+        assertEq(priceAfter, priceBefore);
+        monFeed.set(1e8); // MON turun ke 1 USD
+        assertLt(vault.totalAssets() * 1e18 / vault.totalSupply(), priceBefore);
     }
 
     function test_reserveRatioCapsTrading() public {
@@ -367,10 +377,13 @@ contract AgentVaultTest is Test {
         vm.prank(alice);
         vault.deposit(10_000 * USDC, alice);
 
-        // Spending 2,500 of 10,000 USDC on MON drops totalAssets to 7,500 — a 25%
-        // drawdown, past the 20% threshold.
+        // M1 rejects a single swap losing >20%, so the drawdown has to accumulate:
+        // a fair buy, then the oracle marks the position down.
         vm.prank(agentWallet);
-        vault.executeSwap(address(market), true, uint128(2_500 * USDC), 0, 0);
+        vault.executeSwap(address(market), true, uint128(5_000 * USDC), 0, 0); // 2,500 MON at 2 USD
+        monFeed.set(1e8); // MON → 1 USD: vault 5,000 + 2,500 = 7,500 → 25% drawdown vs HWM
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(1 * USDC), 0, 0); // any swap re-checks the breaker
 
         assertEq(uint8(vault.status()), uint8(Status.Paused));
     }
@@ -388,7 +401,7 @@ contract AgentVaultTest is Test {
 
     function test_circuitBreakerDisabledWhenZero() public {
         AgentVault noBreaker = new AgentVault(
-            keccak256("agent-no-breaker"), creator, agentWallet, custosCore, address(usdc), address(market),
+            keccak256("agent-no-breaker"), creator, agentWallet, custosCore, address(usdc), address(oracle),
             address(0), 1000, 0, 7000, 10_000 * uint128(USDC), 30 days, "Custos: nb", "cst-nb"
         );
         vm.prank(custosCore);
@@ -412,7 +425,10 @@ contract AgentVaultTest is Test {
         vault.deposit(10_000 * USDC, alice);
 
         vm.prank(agentWallet);
-        vault.executeSwap(address(market), true, uint128(2_500 * USDC), 0, 0);
+        vault.executeSwap(address(market), true, uint128(5_000 * USDC), 0, 0); // 2,500 MON at 2 USD
+        monFeed.set(1e8); // MON → 1 USD: vault 5,000 + 2,500 = 7,500 → 25% drawdown vs HWM
+        vm.prank(agentWallet);
+        vault.executeSwap(address(market), true, uint128(1 * USDC), 0, 0); // any swap re-checks the breaker
         assertEq(uint8(vault.status()), uint8(Status.Paused));
 
         uint256 priceAtPause = (vault.totalAssets() * 1e18) / vault.totalSupply();
@@ -448,7 +464,7 @@ contract AgentVaultTest is Test {
 
         AgentVault v = new AgentVault(
             keccak256(abi.encode("fuzz", drawdownBps, buyAmount)), creator, agentWallet, custosCore,
-            address(usdc), address(market), address(0), 1000, drawdownBps, 9500,
+            address(usdc), address(oracle), address(0), 1000, drawdownBps, 9500,
             100_000 * uint128(USDC), 30 days, "Custos: f", "cst-f"
         );
         vm.prank(custosCore);

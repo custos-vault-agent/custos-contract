@@ -111,6 +111,7 @@ contract KuruAdapterTest is Base {
         vm.prank(agentWallet);
         AgentVault(vault).executeSwap(address(adapter), true, uint128(400 * USDC), 0, 0);
 
-        assertEq(AgentVault(vault).totalAssets(), usdc.balanceOf(vault));
+        // H2: MON yang dibeli ikut dinilai (2 USD/MON lewat oracle), bukan hilang dari ledger.
+        assertEq(AgentVault(vault).totalAssets(), usdc.balanceOf(vault) + (mon.balanceOf(vault) * 2 * USDC) / MON);
     }
 }

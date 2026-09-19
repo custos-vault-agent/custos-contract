@@ -8,9 +8,17 @@ import {AgentVault} from "../src/AgentVault.sol";
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
 import {MockYieldSource} from "../src/adapters/MockYieldSource.sol";
-import {FixedPriceMarket} from "../src/adapters/FixedPriceMarket.sol";
+import {KuruMarketAdapter} from "../src/adapters/KuruMarketAdapter.sol";
+import {IKuruRouter} from "../src/interfaces/IKuruRouter.sol";
 import {NansenModule} from "../src/modules/NansenModule.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
+import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
+import {MockAggregator} from "../test/mocks/MockAggregator.sol";
 import {MockERC20} from "../test/mocks/MockERC20.sol";
+import {MockAuroraReceiver} from "../test/mocks/MockAuroraReceiver.sol";
+import {MockKuruFactory} from "../test/mocks/MockKuruFactory.sol";
+import {MockKuruRouter} from "../test/mocks/MockKuruRouter.sol";
 
 /// @notice Deploys the full Custos stack to a local Anvil node and seeds it
 ///         with real demo agents, swaps, deposits, and Nansen attestations —
@@ -52,15 +60,46 @@ contract DeployScript is Script {
             )
         );
 
+        // Kuru path: factory registers the MON/USDC market — the same
+        // "bring a new asset to Kuru" call shape the bounty targets — and the
+        // adapter trades against it through the router, exactly like mainnet.
+        // Mocked because neither has a usable testnet endpoint yet (see
+        // IKuruFactory.sol / IKuruRouter.sol).
+        MockKuruFactory kuruFactory = new MockKuruFactory();
+        MockKuruRouter kuruRouter = new MockKuruRouter();
+        address orderbook = kuruFactory.deployProxy(
+            0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0
+        );
+        KuruMarketAdapter market = new KuruMarketAdapter(IKuruRouter(address(kuruRouter)), orderbook);
+
         // 1 MON = 2 USDC, same convention as test/Base.t.sol.
-        FixedPriceMarket market = new FixedPriceMarket(address(mon), address(usdc), 2 * USDC, 1 * MON);
-        mon.mint(address(market), 1_000_000 * MON);
-        usdc.mint(address(market), 1_000_000 * USDC);
+        kuruRouter.setPrice(orderbook, 2 * USDC, 1 * MON);
+        mon.mint(address(kuruRouter), 1_000_000 * MON);
+        usdc.mint(address(kuruRouter), 1_000_000 * USDC);
 
         MockYieldSource yieldSource = new MockYieldSource(address(usdc), 500); // 5% APY
 
+        // H2: base token (MON) dinilai lewat Chainlink. Di Monad pakai proxy
+        // MON/USD asli lewat MON_USD_FEED; di anvil tidak ada Chainlink, jadi
+        // pakai mock dengan harga yang sama seperti router (2 USD).
+        address monUsdFeed = vm.envOr("MON_USD_FEED", address(0));
+        if (monUsdFeed == address(0)) monUsdFeed = address(new MockAggregator(8, 2e8));
+        PriceOracle priceOracle = new PriceOracle(deployer, address(usdc));
+        priceOracle.setFeed(address(mon), AggregatorV3Interface(monUsdFeed), 1 days);
+
+        VaultFactory vaultFactory = new VaultFactory(address(custos));
+
         custos.setMarketAdapter(address(market));
+        custos.setVaultFactory(address(vaultFactory));
+        custos.setPriceOracle(address(priceOracle));
+        custos.setYieldSourceAllowed(address(yieldSource), true); // H1
         custos.setMinSeed(uint128(500 * USDC));
+
+        // Aurora Intents Connect only ships a mainnet widget/API today — no
+        // testnet endpoint to integrate against yet — so the demo stands a
+        // mock in the real Aurora Receiver's trusted slot instead.
+        MockAuroraReceiver auroraReceiver = new MockAuroraReceiver(custos, usdc);
+        custos.setAuroraReceiver(address(auroraReceiver));
 
         // Demo agent wallets are script-derived, not real secrets — fund
         // them with just enough ETH to pay gas for their seeded swaps.
@@ -110,27 +149,22 @@ contract DeployScript is Script {
 
         // Real swaps move real share price — no invented numbers.
         //
-        // totalAssets() only counts settled USDC (idle + yield) — an open
-        // MON position is never marked to market — so a buy always reads
-        // as an immediate drawdown of the full amount spent until it's
-        // sold back. Both buys below stay under each vault's 20%
-        // maxDrawdownBps so neither trips its circuit breaker.
+        // totalAssets() marks the open MON position to the oracle price (H2),
+        // so a buy at the oracle price is share-price neutral; only a later
+        // price move changes it.
         vm.startBroadcast(_agentKey(0));
-        // 150 USDC of 1,000 USDC seed = 15% drop, under the 20% breaker.
         AgentVault(vaults[0]).executeSwap(address(market), true, uint128(150 * USDC), 0, 0);
         vm.stopBroadcast();
 
         vm.startBroadcast(_agentKey(1));
-        // 120 USDC of 1,000 USDC seed = 12% drop. Left unsold on purpose —
-        // an agent currently down on paper, same flavor as the old mock
-        // data's underwater agents.
+        // Left unsold on purpose — an agent holding an open position.
         AgentVault(vaults[1]).executeSwap(address(market), true, uint128(120 * USDC), 0, 0);
         vm.stopBroadcast();
 
         // MON rallies — agent 0 sells its 75 MON back into the rally,
         // realizing a real profit and minting a real FeeMinted event.
         vm.startBroadcast(deployerKey);
-        market.setPrice(12 * USDC / 5, 1 * MON); // 2.4 USDC per MON
+        kuruRouter.setPrice(orderbook, 12 * USDC / 5, 1 * MON); // 2.4 USDC per MON
         vm.stopBroadcast();
 
         vm.startBroadcast(_agentKey(0));
@@ -179,7 +213,14 @@ contract DeployScript is Script {
         vm.serializeAddress(json, "usdc", address(usdc));
         vm.serializeAddress(json, "mon", address(mon));
         vm.serializeAddress(json, "market", address(market));
+        vm.serializeAddress(json, "kuruOrderbook", orderbook);
+        vm.serializeAddress(json, "kuruRouter", address(kuruRouter));
+        vm.serializeAddress(json, "kuruFactory", address(kuruFactory));
         vm.serializeAddress(json, "yieldSource", address(yieldSource));
+        vm.serializeAddress(json, "priceOracle", address(priceOracle));
+        vm.serializeAddress(json, "vaultFactory", address(vaultFactory));
+        vm.serializeAddress(json, "monUsdFeed", monUsdFeed);
+        vm.serializeAddress(json, "auroraReceiver", address(auroraReceiver));
         vm.serializeBytes32(json, "agentIds", agentIds);
         vm.serializeAddress(json, "agentVaults", vaults);
         string memory finalJson = vm.serializeAddress(json, "agentWallets", agentWallets);

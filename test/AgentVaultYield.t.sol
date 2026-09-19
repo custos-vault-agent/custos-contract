@@ -7,6 +7,10 @@ import {AgentVault} from "../src/AgentVault.sol";
 import {MockYieldSource} from "../src/adapters/MockYieldSource.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
+import {MockCustosCore} from "./mocks/MockCustosCore.sol";
+import {MockAggregator} from "./mocks/MockAggregator.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
+import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
 
 contract AgentVaultYieldTest is Test {
     AgentVault internal vault;
@@ -14,10 +18,12 @@ contract AgentVaultYieldTest is Test {
     MockERC20 internal usdc;
     MockERC20 internal mon;
     MockMarket internal market;
+    PriceOracle internal oracle;
+    MockAggregator internal monFeed;
 
     address internal creator = makeAddr("creator");
     address internal agentWallet = makeAddr("agentWallet");
-    address internal custosCore = makeAddr("custosCore");
+    address internal custosCore = address(new MockCustosCore());
     address internal alice = makeAddr("alice");
 
     uint256 internal constant USDC = 1e6;
@@ -28,11 +34,15 @@ contract AgentVaultYieldTest is Test {
         market = new MockMarket(address(mon), address(usdc), 2 * USDC, 1e18);
         mon.mint(address(market), 1_000_000 * 1e18);
         usdc.mint(address(market), 1_000_000 * USDC);
+        // MON/USD feed, 8 desimal, 2 USD — cocok dengan harga MockMarket.
+        monFeed = new MockAggregator(8, 2e8);
+        oracle = new PriceOracle(address(this), address(usdc));
+        oracle.setFeed(address(mon), AggregatorV3Interface(address(monFeed)), 1 days);
 
         yieldSource = new MockYieldSource(address(usdc), 500); // 5% APY
 
         vault = new AgentVault(
-            keccak256("agent-yield"), creator, agentWallet, custosCore, address(usdc), address(market),
+            keccak256("agent-yield"), creator, agentWallet, custosCore, address(usdc), address(oracle),
             address(yieldSource), 1000, 2000, 7000, 10_000 * uint128(USDC), 30 days,
             "Custos: agent-yield", "cst-ay"
         );

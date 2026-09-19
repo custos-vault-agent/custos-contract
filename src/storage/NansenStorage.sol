@@ -4,8 +4,8 @@ pragma solidity ^0.8.24;
 /// @custom:storage-location erc7201:custos.storage.nansen
 struct NansenLayout {
     address upgradeAuthority;
-    address attestor; // wallet yang sign Nansen attestation (D23) — dipindah dari AccessLayout
-    address custosCore; // registry yang dipakai untuk agentExists(); diset sekali, tidak ada setter
+    address attestor; // signs Nansen attestations (D23)
+    address custosCore; // registry used for agentExists(); set once, no setter
     mapping(bytes32 agentId => Attestation) attestations;
 }
 

@@ -17,9 +17,19 @@ event AttestorChanged(address oldAttestor, address newAttestor);
 
 event MinSeedChanged(uint128 oldMinSeed, uint128 newMinSeed);
 
+event UpgradeAuthorityChanged(address indexed oldAuthority, address indexed newAuthority);
+
+event YieldSourceAllowedChanged(address indexed yieldSource, bool allowed);
+
+event PriceOracleChanged(address indexed oldOracle, address indexed newOracle);
+
+event VaultFactoryChanged(address indexed oldFactory, address indexed newFactory);
+
+event FeedChanged(address indexed token, address indexed aggregator, uint32 maxStaleness);
+
 /* ----------------------------- CustosCore: agent --------------------------- */
 
-/// @dev `description` hanya hidup di log; on-chain yang tersimpan cuma hash-nya (D9).
+/// @dev `description` lives only in the log; on-chain stores just its hash (D9).
 event AgentRegistered(
     bytes32 indexed id,
     address indexed creator,
@@ -63,7 +73,11 @@ event SwapExecuted(
 event AgentPeriodRolled(bytes32 indexed agentId, uint64 newPeriodStart, uint128 usedBefore);
 
 event FeeMinted(
-    address indexed vault, address indexed creator, uint256 feeShares, uint256 feeAssets, uint256 newHighWaterMark
+    address indexed vault,
+    address indexed creator,
+    uint256 feeShares,
+    uint256 feeAssets,
+    uint256 newHighWaterMark
 );
 
 event SubscriberDeposited(address indexed vault, address indexed subscriber, uint256 assets, uint256 shares);

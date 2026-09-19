@@ -5,8 +5,12 @@ import {Test} from "forge-std/Test.sol";
 
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
+import {MockAggregator} from "./mocks/MockAggregator.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
+import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
 
 /// @notice Harness bersama: proxy terpasang, market adapter + minSeed diset, token
 ///         siap. Beda dari v0.1: tidak ada lagi shared vault untuk di-deposit —
@@ -19,6 +23,8 @@ abstract contract Base is Test {
     MockERC20 internal usdc; // aset akuntansi, 6 desimal
     MockERC20 internal mon; // base, 18 desimal
     MockMarket internal market;
+    PriceOracle internal oracle;
+    MockAggregator internal monFeed;
 
     address internal authority = makeAddr("authority");
     address internal alice = makeAddr("alice");
@@ -48,8 +54,16 @@ abstract contract Base is Test {
         mon.mint(address(market), 1_000_000 * MON);
         usdc.mint(address(market), 1_000_000 * USDC);
 
+        // MON/USD feed, 8 desimal, 2 USD — cocok dengan harga MockMarket.
+        monFeed = new MockAggregator(8, 2e8);
+        oracle = new PriceOracle(authority, address(usdc));
+        vm.prank(authority);
+        oracle.setFeed(address(mon), AggregatorV3Interface(address(monFeed)), 1 days);
+
         vm.startPrank(authority);
         custos.setMarketAdapter(address(market));
+        custos.setVaultFactory(address(new VaultFactory(address(custos))));
+        custos.setPriceOracle(address(oracle));
         custos.setMinSeed(MIN_SEED);
         vm.stopPrank();
 

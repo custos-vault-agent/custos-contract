@@ -7,16 +7,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IYieldSource} from "../interfaces/IYieldSource.sol";
 import {ZeroAddress} from "../Errors.sol";
 
-/// @notice Yield source palsu dengan APY tetap, untuk demo hackathon (spec v1 §11 O6)
-///         sampai ada lending protocol yang tersedia di Monad.
+/// @notice Fixed-APY fake yield source for the demo (spec v1 §11 O6) until a lending
+///         protocol is available on Monad.
 ///
-/// @dev Bukan test-only mock — ini adapter yang benar-benar di-deploy untuk demo,
-///      makanya hidup di `src/adapters/` bersama `KuruMarketAdapter`, bukan di
-///      `test/mocks/`. Test suite memakainya langsung; tidak ada double terpisah.
-///
-///      Akrual linear sederhana: `balance = principal * (1 + apyBps/10_000 * elapsed/365days)`.
-///      Tidak ada compounding — cukup untuk demo, dan linear membuat matematikanya
-///      mudah diverifikasi lewat mata di test manapun.
+/// @dev Deployed for real, hence `src/adapters/`. Linear accrual, no compounding:
+///      `balance = principal * (1 + apyBps/10_000 * elapsed/365days)`.
 contract MockYieldSource is IYieldSource {
     using SafeERC20 for IERC20;
 
@@ -37,9 +32,8 @@ contract MockYieldSource is IYieldSource {
     }
 
     function deposit(uint256 assets) external returns (uint256 deposited) {
-        // Akrual yang sudah berjalan di-realisasi ke principal dulu sebelum
-        // menambah setoran baru, supaya deposit kedua tidak "menimpa" bunga yang
-        // sudah terkumpul dari deposit pertama.
+        // Realize accrued interest into principal before adding, so a second
+        // deposit does not overwrite what the first has earned.
         uint256 current = balanceOf(msg.sender);
         asset.safeTransferFrom(msg.sender, address(this), assets);
         _positions[msg.sender] = Position({principal: current + assets, depositedAt: block.timestamp});

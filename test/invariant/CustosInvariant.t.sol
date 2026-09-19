@@ -6,6 +6,10 @@ import {Test} from "forge-std/Test.sol";
 import {AgentVault} from "../../src/AgentVault.sol";
 import {CustosCore} from "../../src/CustosCore.sol";
 import {CustosProxy} from "../../src/CustosProxy.sol";
+import {VaultFactory} from "../../src/VaultFactory.sol";
+import {PriceOracle} from "../../src/PriceOracle.sol";
+import {AggregatorV3Interface} from "../../src/interfaces/AggregatorV3Interface.sol";
+import {MockAggregator} from "../mocks/MockAggregator.sol";
 import {Status} from "../../src/Types.sol";
 import {Handler} from "./Handler.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -37,8 +41,12 @@ contract CustosInvariantTest is Test {
         mon.mint(address(market), 1e30);
         usdc.mint(address(market), 1e30);
 
+        PriceOracle oracle = new PriceOracle(authority, address(usdc));
         vm.startPrank(authority);
+        oracle.setFeed(address(mon), AggregatorV3Interface(address(new MockAggregator(8, 2e8))), 365 days);
         custos.setMarketAdapter(address(market));
+        custos.setVaultFactory(address(new VaultFactory(address(custos))));
+        custos.setPriceOracle(address(oracle));
         custos.setMinSeed(500e6);
         vm.stopPrank();
 
@@ -49,14 +57,15 @@ contract CustosInvariantTest is Test {
     /* ---------------------------------------------------------------------- */
 
     /// @notice I1 — setiap vault selalu backed: totalAssets() sama dengan saldo
-    ///         idle-nya sendiri (yieldSource selalu address(0) di suite ini).
+    ///         idle-nya + posisi MON dinilai oracle (H2; yieldSource selalu
+    ///         address(0) di suite ini). Feed MON = 2 USD, 8 desimal.
     function invariant_vaultSolvent() public view {
         uint256 n = handler.idCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 id = handler.ids(i);
             address vault = custos.getAgent(id).vault;
-            uint256 idle = usdc.balanceOf(vault);
-            assertEq(AgentVault(vault).totalAssets(), idle, "I1: totalAssets != idle balance");
+            uint256 backed = usdc.balanceOf(vault) + (mon.balanceOf(vault) * 2e6) / 1e18;
+            assertEq(AgentVault(vault).totalAssets(), backed, "I1: totalAssets != idle + valued base");
         }
     }
 

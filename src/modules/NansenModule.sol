@@ -8,7 +8,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 
 import {Attestation, NansenLayout, NansenStorage} from "../storage/NansenStorage.sol";
 import {AttestationInvalid, NotAttestor, NotUpgradeAuthority, UnknownAgent, ZeroAddress} from "../Errors.sol";
-import {AttestorChanged, NansenAttestationSubmitted} from "../Events.sol";
+import {AttestorChanged, NansenAttestationSubmitted, UpgradeAuthorityChanged} from "../Events.sol";
 import {IAgentRegistryExists} from "../interfaces/IAgentRegistryExists.sol";
 
 /// @notice Attestation Nansen on-chain (spec v1 D23, §4.2, §12) — split out of
@@ -34,7 +34,10 @@ contract NansenModule is Initializable, UUPSUpgradeable {
         _;
     }
 
-    function initialize(address upgradeAuthority_, address attestor_, address custosCore_) external initializer {
+    function initialize(address upgradeAuthority_, address attestor_, address custosCore_)
+        external
+        initializer
+    {
         if (upgradeAuthority_ == address(0) || attestor_ == address(0) || custosCore_ == address(0)) {
             revert ZeroAddress();
         }
@@ -42,6 +45,13 @@ contract NansenModule is Initializable, UUPSUpgradeable {
         $.upgradeAuthority = upgradeAuthority_;
         $.attestor = attestor_;
         $.custosCore = custosCore_;
+    }
+
+    function transferUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        NansenLayout storage $ = NansenStorage.layout();
+        emit UpgradeAuthorityChanged($.upgradeAuthority, newAuthority);
+        $.upgradeAuthority = newAuthority;
     }
 
     function setAttestor(address newAttestor) external onlyUpgradeAuthority {
@@ -68,7 +78,7 @@ contract NansenModule is Initializable, UUPSUpgradeable {
         emit NansenAttestationSubmitted(agentId, attestHash, uint64(block.timestamp));
     }
 
-    /// @notice Verifikasi attestation — pure view, callable oleh siapapun.
+    /// @notice Verifies an attestation — view, callable by anyone.
     function verifyAttestation(
         bytes32 agentId,
         address wallet,
@@ -79,8 +89,6 @@ contract NansenModule is Initializable, UUPSUpgradeable {
     ) external view returns (bool valid, address signer) {
         bytes32 hash = keccak256(abi.encode(wallet, label, pnl, winRate, timestamp));
         Attestation storage a = NansenStorage.layout().attestations[agentId];
-        // Early-return sentinel for "no matching attestation" — not a redundant
-        // boolean comparison, there's no cheaper equivalent expression here.
         if (hash != a.attestHash) return (false, address(0));
 
         signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(hash), a.signature);

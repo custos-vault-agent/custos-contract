@@ -9,20 +9,17 @@ import {IKuruRouter} from "../interfaces/IKuruRouter.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
 import {ZeroAddress} from "../Errors.sol";
 
-/// @notice Menerjemahkan satu pasar Kuru menjadi bentuk `IMarket` yang dipahami Custos.
+/// @notice Wraps one Kuru market as the `IMarket` shape Custos understands.
 ///
-/// @dev Satu adapter membungkus **satu** orderbook. Itu disengaja: seluruh model allowance
-///      bertumpu pada `quoteToken() == accountingAsset`, dan properti itu hanya bermakna
-///      untuk satu pasar tertentu. Sebuah adapter yang merutekan ke pasar mana pun akan
-///      membuat pemeriksaan di `setMarketAllowed` kehilangan arti — ia lulus sekali saat
-///      di-allowlist lalu tidak mengikat apa pun sesudahnya.
+/// @dev One adapter per orderbook, on purpose: the allowance model rests on
+///      `quoteToken() == accountingAsset`, which only means something for a fixed
+///      market. An adapter that routed anywhere would make the `setMarketAllowed`
+///      check meaningless after the first pass.
 ///
-///      **Adapter tidak memegang kepercayaan apa pun.** Ia tidak punya owner, tidak punya
-///      state, dan tidak menyimpan dana di antara transaksi. Siapa pun boleh memanggilnya;
-///      ia hanya bisa memindahkan token yang ditarik dari `msg.sender` pada panggilan itu
-///      juga, dan mengembalikan seluruh hasilnya ke `msg.sender`. Custos pun tidak
-///      mempercayai nilai baliknya: `TradeModule._callMarket` mengukur perpindahan dari
-///      selisih saldonya sendiri.
+///      **The adapter holds no trust.** No owner, no state, no funds between
+///      transactions. It can only move tokens pulled from `msg.sender` in the same
+///      call and returns everything to `msg.sender`. The vault measures its own
+///      balance deltas rather than trusting the return value.
 contract KuruMarketAdapter is IMarket {
     using SafeERC20 for IERC20;
 
@@ -37,11 +34,9 @@ contract KuruMarketAdapter is IMarket {
         router = router_;
         orderbook = orderbook_;
 
-        // Dibaca sekali dan dibekukan. Kalau dibaca ulang tiap swap, sebuah pasar yang
-        // di-upgrade bisa menukar arti base dan quote di bawah kaki allowlist yang sudah
-        // terlanjur menyetujuinya.
-        (,, address baseAsset,, address quoteAsset,,,,,,) =
-            IKuruOrderBook(orderbook_).getMarketParams();
+        // Read once and frozen: re-reading per swap would let an upgraded market swap
+        // base/quote under an allowlist that already approved it.
+        (,, address baseAsset,, address quoteAsset,,,,,,) = IKuruOrderBook(orderbook_).getMarketParams();
         if (baseAsset == address(0) || quoteAsset == address(0)) revert ZeroAddress();
         _base = baseAsset;
         _quote = quoteAsset;
@@ -56,15 +51,11 @@ contract KuruMarketAdapter is IMarket {
     }
 
     /// @inheritdoc IMarket
-    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut)
-        external
-        returns (uint256 amountOut)
-    {
+    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut) external returns (uint256 amountOut) {
         (address tokenIn, address tokenOut) = isBuy ? (_quote, _base) : (_base, _quote);
 
-        // Saldo dicatat *sebelum* penarikan, jadi selisihnya adalah sisa dari swap ini
-        // saja. Membaca saldo penuh di akhir akan menyapu token yang kebetulan nyasar ke
-        // adapter ini ke pemanggil berikutnya.
+        // Snapshot before pulling so the delta is this swap's only; reading the full
+        // balance at the end would sweep stray tokens to the next caller.
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
@@ -73,35 +64,28 @@ contract KuruMarketAdapter is IMarket {
 
         _route(isBuy, tokenIn, tokenOut, amountIn, minAmountOut);
 
-        // Izin sisa dibersihkan tanpa syarat: router yang hanya memakai sebagian tidak
-        // boleh meninggalkan klaim yang masih hidup atas adapter ini.
+        // Always clear leftover approval; a partial-fill router must not keep a live
+        // claim on this adapter.
         IERC20(tokenIn).forceApprove(address(router), 0);
 
         amountOut = IERC20(tokenOut).balanceOf(address(this)) - outBefore;
         uint256 unspent = IERC20(tokenIn).balanceOf(address(this)) - inBefore;
 
-        // Adapter tidak menyimpan apa pun di antara transaksi. Semua yang masuk keluar
-        // lagi ke pemanggil yang sama, di transaksi yang sama.
+        // Nothing stays in the adapter: everything goes back to the caller.
         if (unspent != 0) IERC20(tokenIn).safeTransfer(msg.sender, unspent);
         if (amountOut != 0) IERC20(tokenOut).safeTransfer(msg.sender, amountOut);
     }
 
-    /// @dev Membangun rute satu hop dan memanggil router. Dipisahkan dari `swap` bukan
-    ///      demi kerapian melainkan karena keduanya bersama-sama melampaui batas 16 slot
-    ///      stack solc — kendala yang sama yang memecah `TradeModule.executeSwap`.
-    function _route(
-        bool isBuy,
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint256 minAmountOut
-    ) internal {
+    /// @dev Builds a one-hop route and calls the router. Split from `swap` to stay
+    ///      under solc's 16-slot stack limit.
+    function _route(bool isBuy, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut)
+        internal
+    {
         address[] memory route = new address[](1);
         route[0] = orderbook;
         bool[] memory sides = new bool[](1);
         sides[0] = isBuy;
-        // Custos hanya mengurus ERC-20; jalur native tidak pernah dipakai dan
-        // `msg.value` selalu nol.
+        // ERC-20 only; the native path is never used and `msg.value` is always zero.
         bool[] memory nativeSend = new bool[](1);
 
         router.anyToAnySwap(route, sides, nativeSend, tokenIn, tokenOut, amountIn, minAmountOut);

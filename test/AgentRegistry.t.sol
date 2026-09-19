@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentVault} from "../src/AgentVault.sol";
 import {CustosCore} from "../src/CustosCore.sol";
 import {CustosProxy} from "../src/CustosProxy.sol";
+import {VaultFactory} from "../src/VaultFactory.sol";
 import {AgentRecord, Status} from "../src/Types.sol";
 import {
     AgentAlreadyRevoked,
@@ -18,6 +19,9 @@ import {
 } from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
+import {MockAggregator} from "./mocks/MockAggregator.sol";
+import {PriceOracle} from "../src/PriceOracle.sol";
+import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
 
 contract AgentRegistryTest is Test {
     CustosCore internal custos;
@@ -45,8 +49,12 @@ contract AgentRegistryTest is Test {
             )
         );
 
+        PriceOracle oracle = new PriceOracle(authority, address(usdc));
         vm.startPrank(authority);
+        oracle.setFeed(address(mon), AggregatorV3Interface(address(new MockAggregator(8, 2e8))), 1 days);
         custos.setMarketAdapter(address(market));
+        custos.setVaultFactory(address(new VaultFactory(address(custos))));
+        custos.setPriceOracle(address(oracle));
         custos.setMinSeed(MIN_SEED);
         vm.stopPrank();
 

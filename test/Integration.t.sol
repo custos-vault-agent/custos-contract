@@ -19,6 +19,8 @@ contract IntegrationTest is Base {
         // time doesn't revert insolvent (only matters here — existing unit tests
         // never warp far enough while also withdrawing the full balance).
         usdc.mint(address(yieldSource), 1_000_000 * USDC);
+        vm.prank(authority);
+        custos.setYieldSourceAllowed(address(yieldSource), true); // H1
 
         usdc.mint(alice, seedAmount);
         vm.prank(alice);
@@ -39,6 +41,7 @@ contract IntegrationTest is Base {
 
         // Yield accrues on the seed alone before anyone else shows up.
         vm.warp(block.timestamp + 30 days);
+        monFeed.set(2e8); // feed keeps posting rounds; refresh after warp
 
         usdc.mint(bob, 10_000 * USDC);
         vm.prank(bob);
@@ -78,9 +81,13 @@ contract IntegrationTest is Base {
         vm.prank(bob);
         AgentVault(vault).deposit(10_000 * USDC, bob); // vault now 20,000 USDC total
 
-        // A 12% drawdown against a 10% threshold: buy 2,400 of 20,000 (12%).
+        // A fair buy, then MON marked down 50% by the oracle: 4,800 of 20,000 in
+        // MON → 2,400 lost → 12% drawdown against a 10% threshold on the next swap.
         vm.prank(agentWallet);
-        AgentVault(vault).executeSwap(address(market), true, uint128(2_400 * USDC), 0, 0);
+        AgentVault(vault).executeSwap(address(market), true, uint128(4_800 * USDC), 0, 0);
+        monFeed.set(1e8);
+        vm.prank(agentWallet);
+        AgentVault(vault).executeSwap(address(market), true, uint128(1 * USDC), 0, 0);
         assertEq(uint8(AgentVault(vault).status()), uint8(Status.Paused));
 
         vm.prank(agentWallet);
@@ -108,6 +115,7 @@ contract IntegrationTest is Base {
         (, address vault, MockYieldSource yieldSource) = _registerWithYield(2000, 5_000 * uint128(USDC));
 
         vm.warp(block.timestamp + 180 days); // yield accrues with zero subscribers
+        monFeed.set(2e8);
         uint256 priceAfterYield = (AgentVault(vault).totalAssets() * 1e18) / AgentVault(vault).totalSupply();
         assertGt(priceAfterYield, 1e18);
 

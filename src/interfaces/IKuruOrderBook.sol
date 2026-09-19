@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice Potongan antarmuka orderbook Kuru yang benar-benar dipakai Custos.
+/// @notice The slice of Kuru's orderbook interface Custos actually uses.
 ///
-/// @dev Hanya `getMarketParams` yang dibutuhkan: dari sanalah adapter tahu token base dan
-///      quote sebuah pasar, dan `TradeModule.setMarketAllowed` menolak pasar yang quote-nya
-///      bukan aset akuntansi (D4). Sisa antarmuka orderbook sengaja tidak disalin — apa
-///      yang tidak dipanggil tidak perlu dijaga tetap sinkron.
+/// @dev Only `getMarketParams`: it tells the adapter a market's base and quote tokens,
+///      and `setMarketAllowed` rejects markets whose quote is not the accounting
+///      asset (D4).
 interface IKuruOrderBook {
-    /// @notice Parameter pasar, urutannya persis seperti yang dikembalikan kontrak Kuru.
+    /// @notice Market params, in exactly the order Kuru's contract returns them.
     ///
-    /// @dev Urutan tuple ini diverifikasi terhadap `ParamFetcher.getMarketParams` di
-    ///      kuru-sdk, bukan ditebak: indeks 2 adalah base dan indeks 4 adalah quote.
-    ///      Membaliknya akan lolos kompilasi, lolos allowlist kalau kebetulan simetris,
-    ///      lalu membebankan notional dalam mata uang yang salah.
+    /// @dev Tuple order verified against kuru-sdk's `ParamFetcher.getMarketParams`:
+    ///      index 2 is base, index 4 is quote. Swapping them would compile and then
+    ///      charge notional in the wrong currency.
     function getMarketParams()
         external
         view

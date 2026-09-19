@@ -6,20 +6,29 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
-import {NotAuroraReceiver, NotUpgradeAuthority, Paused, ZeroAddress} from "../Errors.sol";
-import {AuroraReceiverChanged, MarketAdapterChanged, MinSeedChanged, PausedChanged} from "../Events.sol";
+import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {
+    NotAuroraReceiver,
+    NotUpgradeAuthority,
+    OracleQuoteMismatch,
+    Paused,
+    ZeroAddress
+} from "../Errors.sol";
+import {
+    AuroraReceiverChanged,
+    MarketAdapterChanged,
+    MinSeedChanged,
+    PausedChanged,
+    PriceOracleChanged,
+    UpgradeAuthorityChanged,
+    VaultFactoryChanged,
+    YieldSourceAllowedChanged
+} from "../Events.sol";
 
-/// @notice Otorisasi, konfigurasi, dan jalur upgrade.
+/// @notice Authorization, configuration, and the upgrade path.
 ///
-/// @dev Aturan keras seluruh sistem: **identitas tidak pernah datang dari calldata.**
-///      Satu-satunya pengecualian sekarang ada di dua tempat, bukan satu: CustosCore
-///      `creditDeposit` (Aurora Receiver ber-allowlist) dan AgentVault
-///      `processDeposit` (hanya bisa dipanggil CustosCore, yang sendiri sudah
-///      memverifikasi pemanggilnya adalah Aurora Receiver).
-///
-///      `_resolveActor` v0.1 dihapus tanpa pengganti: trading sekarang terjadi di
-///      AgentVault, yang mengenali agent-nya lewat immutable `agent` — tidak ada lagi
-///      "wallet terdaftar bertindak untuk owner" yang perlu diselesaikan di CustosCore.
+/// @dev System-wide rule: **identity never comes from calldata.** The one exception
+///      is `creditDeposit`, where the allowlisted Aurora Receiver names the subscriber.
 abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeable {
     modifier onlyUpgradeAuthority() {
         if (msg.sender != AccessStorage.layout().upgradeAuthority) revert NotUpgradeAuthority();
@@ -45,9 +54,8 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         if (upgradeAuthority_ == address(0) || accountingAsset_ == address(0)) revert ZeroAddress();
         AccessLayout storage $ = AccessStorage.layout();
         $.upgradeAuthority = upgradeAuthority_;
-        // Aset akuntansi dikunci saat inisialisasi dan tidak punya setter — sama
-        // seperti v0.1, alasannya tidak berubah: mengubahnya setelah ada vault akan
-        // mendenominasi ulang setiap allowance dan setiap share price secara diam-diam.
+        // No setter: changing the accounting asset after vaults exist would silently
+        // redenominate every allowance and share price.
         $.accountingAsset = accountingAsset_;
     }
 
@@ -71,9 +79,39 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         $.minSeed = amount;
     }
 
+    /// @dev H2: frozen into every vault created afterwards. Must be denominated in the
+    ///      accounting asset or vault `totalAssets` would be in the wrong unit.
+    function setPriceOracle(address oracle) external onlyUpgradeAuthority {
+        AccessLayout storage $ = AccessStorage.layout();
+        if (IPriceOracle(oracle).quoteToken() != $.accountingAsset) revert OracleQuoteMismatch();
+        emit PriceOracleChanged($.priceOracle, oracle);
+        $.priceOracle = oracle;
+    }
+
+    /// @dev A new factory means a new AgentVault version for vaults created afterwards.
+    function setVaultFactory(address factory) external onlyUpgradeAuthority {
+        AccessLayout storage $ = AccessStorage.layout();
+        emit VaultFactoryChanged($.vaultFactory, factory);
+        $.vaultFactory = factory;
+    }
+
+    /// @dev H1: a yield source holds subscriber funds, so it is protocol-gated like markets.
+    function setYieldSourceAllowed(address yieldSource, bool allowed) external onlyUpgradeAuthority {
+        AccessStorage.layout().allowedYieldSources[yieldSource] = allowed;
+        emit YieldSourceAllowedChanged(yieldSource, allowed);
+    }
+
     function pause() external onlyUpgradeAuthority {
         AccessStorage.layout().paused = true;
         emit PausedChanged(true);
+    }
+
+    /// @dev L7: rotating the multisig no longer needs an implementation upgrade.
+    function transferUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        AccessLayout storage $ = AccessStorage.layout();
+        emit UpgradeAuthorityChanged($.upgradeAuthority, newAuthority);
+        $.upgradeAuthority = newAuthority;
     }
 
     function unpause() external onlyUpgradeAuthority {
@@ -101,6 +139,18 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     function minSeed() external view returns (uint128) {
         return AccessStorage.layout().minSeed;
+    }
+
+    function priceOracle() external view returns (address) {
+        return AccessStorage.layout().priceOracle;
+    }
+
+    function vaultFactory() external view returns (address) {
+        return AccessStorage.layout().vaultFactory;
+    }
+
+    function isYieldSourceAllowed(address yieldSource) external view returns (bool) {
+        return AccessStorage.layout().allowedYieldSources[yieldSource];
     }
 
     function paused() external view returns (bool) {

@@ -10,13 +10,8 @@ import {ZeroAddress} from "../Errors.sol";
 /// @notice Fixed-price two-token market, for demo trading until a real Kuru
 ///         market exists on Monad to point at.
 ///
-/// @dev Deployed for real by `script/Deploy.s.sol` — not a test double,
-///      hence living in `src/adapters/` rather than `test/mocks/`, same
-///      rationale as `MockYieldSource`. Deliberately has no misbehavior
-///      knobs like `test/mocks/MockMarket.sol`'s `spendBps`/`payoutBps`:
-///      those exist to probe Custos's accounting under a badly-behaved
-///      market. This contract's only job is to behave correctly so seeded
-///      demo swaps produce real, readable share-price movement.
+/// @dev Deployed for real by the deploy script, hence `src/adapters/` rather than
+///      `test/mocks/`. No misbehaviour knobs: its only job is to behave correctly.
 contract FixedPriceMarket is IMarket {
     using SafeERC20 for IERC20;
 
@@ -55,20 +50,14 @@ contract FixedPriceMarket is IMarket {
         return quote;
     }
 
-    /// @notice Moves the demo price. Used by the deploy script to create
-    ///         real share-price swings across seeded swaps.
+    /// @notice Moves the demo price so seeded swaps produce real share-price swings.
     function setPrice(uint256 num, uint256 den) external onlyOwner {
         emit PriceChanged(priceNum, priceDen, num, den);
-        // The lint wants an event referencing this exact variable name; PriceChanged
-        // above covers both old/new values for priceNum and priceDen together.
         priceNum = num;
         priceDen = den;
     }
 
-    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut)
-        external
-        returns (uint256 amountOut)
-    {
+    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut) external returns (uint256 amountOut) {
         (address tokenIn, address tokenOut) = isBuy ? (quote, base) : (base, quote);
         amountOut = isBuy ? (amountIn * priceDen) / priceNum : (amountIn * priceNum) / priceDen;
         if (amountOut < minAmountOut) revert MarketSlippage();

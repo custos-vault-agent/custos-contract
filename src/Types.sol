@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice Status agent on-chain (spec D6).
-/// @dev `None` sengaja di indeks 0 supaya slot kosong tidak terbaca sebagai Active.
+/// @notice On-chain agent status (spec D6).
+/// @dev `None` is index 0 so an empty slot never reads as Active.
 enum Status {
     None,
     Active,
@@ -10,11 +10,9 @@ enum Status {
     Revoked
 }
 
-/// @notice Catatan satu agent di registry. Vault-nya terpisah (AgentVault), bukan
-///         bagian dari struct ini — lihat spec v1 D13. Nansen attestation juga
-///         terpisah (NansenModule), bukan bagian dari struct ini — lihat
-///         docs/superpowers/specs/2026-09-14-nansen-module-split-design.md.
-/// @dev Layout slot (spec v1 §3.1) — jangan diubah urutannya setelah deploy:
+/// @notice One agent's registry record. Its vault (AgentVault) and Nansen attestation
+///         (NansenModule) live in separate contracts — spec v1 D13.
+/// @dev Slot layout (spec v1 §3.1) — never reorder after deploy:
 ///        0: name
 ///        1: wallet (160) + status (8)
 ///        2: creator
