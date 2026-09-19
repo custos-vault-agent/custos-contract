@@ -7,15 +7,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {NotUpgradeAuthority, OracleQuoteMismatch, Paused, ZeroAddress} from "../Errors.sol";
 import {
-    NotAuroraReceiver,
-    NotUpgradeAuthority,
-    OracleQuoteMismatch,
-    Paused,
-    ZeroAddress
-} from "../Errors.sol";
-import {
-    AuroraReceiverChanged,
     MarketAdapterChanged,
     MinSeedChanged,
     NanSigilChanged,
@@ -28,16 +21,12 @@ import {
 
 /// @notice Authorization, configuration, and the upgrade path.
 ///
-/// @dev System-wide rule: **identity never comes from calldata.** The one exception
-///      is `creditDeposit`, where the allowlisted Aurora Receiver names the subscriber.
+/// @dev System-wide rule: **identity never comes from calldata.** Cross-chain deposits
+///      need no exception: Aurora Intents calls `AgentVault.deposit` from the user's own
+///      intermediary account, like any other depositor.
 abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeable {
     modifier onlyUpgradeAuthority() {
         if (msg.sender != AccessStorage.layout().upgradeAuthority) revert NotUpgradeAuthority();
-        _;
-    }
-
-    modifier onlyAuroraReceiver() {
-        if (msg.sender != AccessStorage.layout().auroraReceiver) revert NotAuroraReceiver();
         _;
     }
 
@@ -61,12 +50,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
     }
 
     /* ------------------------------- admin ------------------------------- */
-
-    function setAuroraReceiver(address receiver) external onlyUpgradeAuthority {
-        AccessLayout storage $ = AccessStorage.layout();
-        emit AuroraReceiverChanged($.auroraReceiver, receiver);
-        $.auroraReceiver = receiver;
-    }
 
     function setMarketAdapter(address adapter) external onlyUpgradeAuthority {
         AccessLayout storage $ = AccessStorage.layout();
@@ -131,10 +114,6 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     function upgradeAuthority() external view returns (address) {
         return AccessStorage.layout().upgradeAuthority;
-    }
-
-    function auroraReceiver() external view returns (address) {
-        return AccessStorage.layout().auroraReceiver;
     }
 
     function marketAdapter() external view returns (address) {

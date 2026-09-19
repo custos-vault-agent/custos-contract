@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 /* ------------------------------- access --------------------------------- */
 
 error NotUpgradeAuthority();
-error NotAuroraReceiver();
 error Paused();
 error ZeroAddress();
 

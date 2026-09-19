@@ -30,7 +30,6 @@ abstract contract Base is Test {
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
     address internal agentWallet = makeAddr("agentWallet");
-    address internal auroraReceiver = makeAddr("auroraReceiver");
 
     uint256 internal constant USDC = 1e6;
     uint256 internal constant MON = 1e18;
@@ -66,9 +65,6 @@ abstract contract Base is Test {
         custos.setPriceOracle(address(oracle));
         custos.setMinSeed(MIN_SEED);
         vm.stopPrank();
-
-        vm.prank(authority);
-        custos.setAuroraReceiver(auroraReceiver);
     }
 
     /// @dev Mints the creator enough USDC to cover the seed, approves, registers.

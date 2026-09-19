@@ -18,7 +18,6 @@ abi: build
 	jq '.abi' out/AgentVault.sol/AgentVault.json > abi/AgentVault.json
 	jq '.abi' out/NanSigil.sol/NanSigil.json > abi/NanSigil.json
 	jq '.abi' out/MockERC20.sol/MockERC20.json > abi/MockERC20.json
-	jq '.abi' out/MockAuroraReceiver.sol/MockAuroraReceiver.json > abi/MockAuroraReceiver.json
 
 # --slow: Deploy.s.sol broadcasts from several different senders (deployer,
 # demo user, script-derived agent wallets) where a later sender's tx

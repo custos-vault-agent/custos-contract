@@ -5,8 +5,6 @@ import {Status} from "./Types.sol";
 
 /* ----------------------------- CustosCore: admin -------------------------- */
 
-event AuroraReceiverChanged(address indexed oldReceiver, address indexed newReceiver);
-
 event MarketAdapterChanged(address indexed oldAdapter, address indexed newAdapter);
 
 event MarketAllowedChanged(address indexed market, bool allowed);

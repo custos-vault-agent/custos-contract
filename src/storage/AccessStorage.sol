@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /// @custom:storage-location erc7201:custos.storage.access
 struct AccessLayout {
     address upgradeAuthority; // multisig + timelock (D10)
-    address auroraReceiver; // sole caller of creditDeposit
+    address __gap0; // was auroraReceiver; cross-chain deposits now call AgentVault.deposit directly
     address accountingAsset; // USDC (D4)
     address marketAdapter; // KuruMarketAdapter
     uint128 minSeed; // creator's minimum seed deposit (D15)

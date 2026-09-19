@@ -172,26 +172,6 @@ abstract contract AgentRegistry is AccessControl {
         emit MarketAllowedChanged(market, allowed);
     }
 
-    /// @notice Credits a cross-chain deposit from the Aurora Receiver as a plain
-    ///         ERC-4626 deposit into the target vault.
-    /// @dev The Aurora Receiver is the only caller trusted to know the subscriber and
-    ///      amount from the source chain (spec v1 §11 O1). Funds are pulled here first,
-    ///      then forwarded through the normal `deposit()`.
-    function creditDeposit(bytes32 agentId, address subscriber, uint256 assets)
-        external
-        onlyAuroraReceiver
-        whenNotPaused
-        returns (uint256 shares)
-    {
-        AgentRecord storage a = RegistryStorage.layout().agents[agentId];
-        if (a.status == Status.None) revert UnknownAgent();
-
-        address token = AccessStorage.layout().accountingAsset;
-        IERC20(token).safeTransferFrom(msg.sender, address(this), assets);
-        IERC20(token).forceApprove(a.vault, assets);
-        shares = AgentVault(a.vault).deposit(assets, subscriber);
-    }
-
     /* ------------------------------ internal ----------------------------- */
 
     function _ownedAgent(bytes32 id) internal view returns (AgentRecord storage a) {

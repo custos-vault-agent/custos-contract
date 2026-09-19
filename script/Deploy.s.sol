@@ -17,7 +17,6 @@ import {VaultFactory} from "../src/VaultFactory.sol";
 import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol";
 import {MockAggregator} from "../test/mocks/MockAggregator.sol";
 import {MockERC20} from "../test/mocks/MockERC20.sol";
-import {MockAuroraReceiver} from "../test/mocks/MockAuroraReceiver.sol";
 import {MockKuruFactory} from "../test/mocks/MockKuruFactory.sol";
 import {MockKuruRouter} from "../test/mocks/MockKuruRouter.sol";
 
@@ -96,12 +95,6 @@ contract DeployScript is Script {
         custos.setPriceOracle(address(priceOracle));
         custos.setYieldSourceAllowed(address(yieldSource), true); // H1
         custos.setMinSeed(uint128(500 * USDC));
-
-        // Aurora Intents Connect only ships a mainnet widget/API today — no
-        // testnet endpoint to integrate against yet — so the demo stands a
-        // mock in the real Aurora Receiver's trusted slot instead.
-        MockAuroraReceiver auroraReceiver = new MockAuroraReceiver(custos, usdc);
-        custos.setAuroraReceiver(address(auroraReceiver));
 
         // Demo agent wallets are script-derived, not real secrets — fund
         // them with just enough ETH to pay gas for their seeded swaps.
@@ -201,7 +194,6 @@ contract DeployScript is Script {
         vm.serializeAddress(json, "priceOracle", address(priceOracle));
         vm.serializeAddress(json, "vaultFactory", address(vaultFactory));
         vm.serializeAddress(json, "monUsdFeed", monUsdFeed);
-        vm.serializeAddress(json, "auroraReceiver", address(auroraReceiver));
         vm.serializeBytes32(json, "agentIds", agentIds);
         vm.serializeAddress(json, "agentVaults", vaults);
         string memory finalJson = vm.serializeAddress(json, "agentWallets", agentWallets);
