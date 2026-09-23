@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -185,6 +186,36 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         assets = super.mint(shares, receiver);
         _pushToYield();
         emit SubscriberDeposited(address(this), receiver, assets, shares);
+    }
+
+    /// @notice L4: `redeem` and `withdraw` charge the performance fee first, which
+    ///         mints shares to the creator and dilutes the caller. These previews
+    ///         count that mint, so `previewRedeem` never promises more assets than
+    ///         `redeem` pays, and `previewWithdraw` never promises fewer shares than
+    ///         `withdraw` burns (EIP-4626). `previewDeposit` and `previewMint` need
+    ///         no override: a deposit charges no fee.
+    function previewRedeem(uint256 shares) public view override returns (uint256) {
+        return Math.mulDiv(shares, totalAssets() + 1, _supplyAfterFee(), Math.Rounding.Floor);
+    }
+
+    function previewWithdraw(uint256 assets) public view override returns (uint256) {
+        return Math.mulDiv(assets, _supplyAfterFee(), totalAssets() + 1, Math.Rounding.Ceil);
+    }
+
+    /// @dev The denominator ERC-4626 would use after `_chargeFeeIfProfit` runs.
+    function _supplyAfterFee() internal view returns (uint256) {
+        return totalSupply() + _pendingFeeShares() + 10 ** _decimalsOffset();
+    }
+
+    /// @dev Shares that `_chargeFeeIfProfit` would mint right now. Same arithmetic,
+    ///      without the state change.
+    function _pendingFeeShares() internal view returns (uint256) {
+        uint256 supply = totalSupply();
+        if (supply == 0) return 0;
+        uint256 assets = totalAssets();
+        if ((assets * 1e18) / supply <= highWaterMark) return 0;
+        uint256 totalProfit = assets - (highWaterMark * supply) / 1e18;
+        return convertToShares((totalProfit * feeRate) / 10_000);
     }
 
     /// @dev No status check (D19): redeem always works, even when paused/revoked.

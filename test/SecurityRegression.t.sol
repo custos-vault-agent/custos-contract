@@ -320,4 +320,62 @@ contract SecurityRegressionTest is Base {
         (bool valid,) = sigil.verify(alice, "Fund", 1, 50, ts);
         assertTrue(valid);
     }
+
+    /* -------------------------------- L4 ----------------------------------- */
+
+    /// Gives the vault a profit so a fee is pending on the next redeem/withdraw.
+    function _vaultWithPendingFee() internal returns (address vault) {
+        (, vault) = _register(address(0));
+        usdc.mint(bob, 10_000 * USDC);
+        vm.startPrank(bob);
+        usdc.approve(vault, type(uint256).max);
+        AgentVault(vault).deposit(10_000 * USDC, bob);
+        vm.stopPrank();
+        // Profit with no new shares: the share price rises above the high water mark.
+        usdc.mint(vault, 2_000 * USDC);
+        assertGt(AgentVault(vault).previewRedeem(1e6), 0);
+    }
+
+    function test_L4_previewRedeemNeverPromisesMoreThanRedeemPays() public {
+        address vault = _vaultWithPendingFee();
+        uint256 shares = AgentVault(vault).balanceOf(bob) / 2;
+
+        uint256 previewed = AgentVault(vault).previewRedeem(shares);
+        vm.prank(bob);
+        uint256 actual = AgentVault(vault).redeem(shares, bob, bob);
+
+        assertLe(previewed, actual, "EIP-4626: previewRedeem must not overstate");
+        assertApproxEqAbs(previewed, actual, 2, "preview should still be close");
+    }
+
+    function test_L4_previewWithdrawNeverPromisesFewerSharesThanWithdrawBurns() public {
+        address vault = _vaultWithPendingFee();
+        uint256 assets = 1_000 * USDC;
+
+        uint256 previewedShares = AgentVault(vault).previewWithdraw(assets);
+        uint256 before = AgentVault(vault).balanceOf(bob);
+        vm.prank(bob);
+        AgentVault(vault).withdraw(assets, bob, bob);
+        uint256 burned = before - AgentVault(vault).balanceOf(bob);
+
+        assertGe(previewedShares, burned, "EIP-4626: previewWithdraw must not understate");
+        assertApproxEqAbs(previewedShares, burned, 2, "preview should still be close");
+    }
+
+    function test_L4_previewsMatchErc4626WhenNoFeeIsPending() public {
+        (, address vault) = _register(address(0));
+        usdc.mint(bob, 1_000 * USDC);
+        vm.startPrank(bob);
+        usdc.approve(vault, type(uint256).max);
+        AgentVault(vault).deposit(1_000 * USDC, bob);
+        vm.stopPrank();
+
+        // At the high water mark there is no fee, so the previews are the plain
+        // ERC-4626 conversions and a round trip returns what it took in.
+        uint256 shares = AgentVault(vault).balanceOf(bob);
+        assertEq(AgentVault(vault).previewRedeem(shares), AgentVault(vault).convertToAssets(shares));
+        assertEq(
+            AgentVault(vault).previewWithdraw(1_000 * USDC), AgentVault(vault).convertToShares(1_000 * USDC)
+        );
+    }
 }
