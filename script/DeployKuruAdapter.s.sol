@@ -26,6 +26,10 @@ contract DeployKuruAdapterScript is DeploymentFile {
         (,, address base,, address quote,,,,,,) = IKuruOrderBook(orderbook).getMarketParams();
         console2.log("orderbook base ", base);
         console2.log("orderbook quote", quote);
+        // Kuru reports the native token as address(0). Custos moves ERC-20 only:
+        // the adapter approves and transfers, the vault measures balance deltas, and
+        // PriceOracle reads decimals(). Pick a market whose base is a contract.
+        require(base != address(0), "base is the native token, not an ERC-20 market");
         require(quote == usdc, "quote is not the accounting asset");
 
         vm.startBroadcast(deployerKey);
