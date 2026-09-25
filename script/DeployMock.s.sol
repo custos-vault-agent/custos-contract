@@ -18,6 +18,11 @@ contract DeployMockScript is DeploymentFile {
     uint256 internal constant MON = 1e18;
 
     function run() external {
+        // A mock USDC or a mock price feed next to real money is a wrong number, not
+        // a test. `DEPLOYMENT_FILE` usually points at one network while `RPC_URL`
+        // points at another, and this stops that mistake at the chain id.
+        require(block.chainid == 31337 || block.chainid == 10143, "DeployMock: dev chains only");
+
         vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
 
         MockERC20 usdc = new MockERC20("USD Coin", "USDC", 6);
