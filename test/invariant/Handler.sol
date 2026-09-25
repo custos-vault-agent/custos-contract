@@ -90,7 +90,17 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
         vm.prank(creator);
         (bytes32 id, address vault) = custos.registerAgent(
-            bytes32("bot"), "d", wallet, allowance, period, feeRate, drawdown, address(0), util, true, seedAmount
+            bytes32("bot"),
+            "d",
+            wallet,
+            allowance,
+            period,
+            feeRate,
+            drawdown,
+            address(0),
+            util,
+            true,
+            seedAmount
         );
         ids.push(id);
         hwmFloor[id] = 1e18;

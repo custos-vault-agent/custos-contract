@@ -55,10 +55,7 @@ contract MockMarket is IMarket {
         payoutBps = bps;
     }
 
-    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut)
-        external
-        returns (uint256 amountOut)
-    {
+    function swap(bool isBuy, uint256 amountIn, uint256 minAmountOut) external returns (uint256 amountOut) {
         uint256 used = (amountIn * spendBps) / 10_000;
 
         (address tokenIn, address tokenOut) = isBuy ? (quote, base) : (base, quote);

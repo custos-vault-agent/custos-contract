@@ -42,9 +42,20 @@ contract AgentVaultYieldTest is Test {
         yieldSource = new MockYieldSource(address(usdc), 500); // 5% APY
 
         vault = new AgentVault(
-            keccak256("agent-yield"), creator, agentWallet, custosCore, address(usdc), address(oracle),
-            address(yieldSource), 1000, 2000, 7000, 10_000 * uint128(USDC), 30 days,
-            "Custos: agent-yield", "cst-ay"
+            keccak256("agent-yield"),
+            creator,
+            agentWallet,
+            custosCore,
+            address(usdc),
+            address(oracle),
+            address(yieldSource),
+            1000,
+            2000,
+            7000,
+            10_000 * uint128(USDC),
+            30 days,
+            "Custos: agent-yield",
+            "cst-ay"
         );
 
         vm.prank(custosCore);

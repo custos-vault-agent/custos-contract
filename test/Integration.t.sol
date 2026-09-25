@@ -28,8 +28,17 @@ contract IntegrationTest is Base {
 
         vm.prank(alice);
         (id, vault) = custos.registerAgent(
-            bytes32("full-flow"), "d", agentWallet, 100_000 * uint128(USDC), 30 days, 1000, maxDrawdownBps,
-            address(yieldSource), 7000, true, seedAmount
+            bytes32("full-flow"),
+            "d",
+            agentWallet,
+            100_000 * uint128(USDC),
+            30 days,
+            1000,
+            maxDrawdownBps,
+            address(yieldSource),
+            7000,
+            true,
+            seedAmount
         );
 
         vm.prank(authority);
@@ -73,7 +82,8 @@ contract IntegrationTest is Base {
     }
 
     function test_fullFlowWithCircuitBreaker() public {
-        (bytes32 id, address vault, MockYieldSource yieldSource) = _registerWithYield(1000, 10_000 * uint128(USDC));
+        (bytes32 id, address vault, MockYieldSource yieldSource) =
+            _registerWithYield(1000, 10_000 * uint128(USDC));
 
         usdc.mint(bob, 10_000 * USDC);
         vm.prank(bob);

@@ -50,12 +50,18 @@ contract MockKuruRouter is IKuruRouter {
         uint256 _amount,
         uint256 _minAmountOut
     ) external payable returns (uint256 _amountOut) {
-        // Custos selalu satu hop dan selalu ERC-20. Rute lain ditolak keras supaya
-        // adapter yang diam-diam mulai mengirimkan bentuk lain ketahuan di test.
+        // Custos selalu satu hop. Rute lain ditolak keras supaya adapter yang diam-diam
+        // mulai mengirimkan bentuk lain ketahuan di test.
         if (_marketAddresses.length != 1 || _isBuy.length != 1 || _nativeSend.length != 1) {
             revert MockRouterUnsupportedRoute();
         }
-        if (_nativeSend[0] || msg.value != 0) revert MockRouterUnsupportedRoute();
+        // `_nativeSend` dan `msg.value` harus sejalan: router sungguhan membaca jumlah
+        // yang didebit dari value saat flag ini menyala, dan dari ERC-20 saat tidak.
+        if (_nativeSend[0]) {
+            if (msg.value != _amount || _debitToken != address(0)) revert MockRouterUnsupportedRoute();
+        } else if (msg.value != 0) {
+            revert MockRouterUnsupportedRoute();
+        }
 
         address orderbook = _marketAddresses[0];
         bool isBuy = _isBuy[0];
@@ -75,7 +81,26 @@ contract MockKuruRouter is IKuruRouter {
 
         if (_amountOut < _minAmountOut) revert MockRouterSlippage();
 
-        IERC20(_debitToken).transferFrom(msg.sender, address(this), used);
-        IERC20(_creditToken).transfer(msg.sender, _amountOut);
+        if (_debitToken == address(0)) {
+            // Native came in with the call. Refund the part a partial fill left over.
+            uint256 refund = _amount - used;
+            if (refund != 0) _sendNative(msg.sender, refund);
+        } else {
+            IERC20(_debitToken).transferFrom(msg.sender, address(this), used);
+        }
+
+        if (_creditToken == address(0)) {
+            _sendNative(msg.sender, _amountOut);
+        } else {
+            IERC20(_creditToken).transfer(msg.sender, _amountOut);
+        }
     }
+
+    function _sendNative(address to, uint256 amount) internal {
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert MockRouterUnsupportedRoute();
+    }
+
+    /// @dev Funded by the test so it can pay out a native leg.
+    receive() external payable {}
 }

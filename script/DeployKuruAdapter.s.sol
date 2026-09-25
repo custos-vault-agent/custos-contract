@@ -22,27 +22,28 @@ contract DeployKuruAdapterScript is DeploymentFile {
         address router = _must("KURU_ROUTER", "kuruRouter");
         address orderbook = _must("KURU_ORDERBOOK", "kuruOrderbook");
         address usdc = _must("USDC_ADDRESS", "usdc");
+        // Only a native market needs this. Kuru reports the native token as the zero
+        // address, and the adapter then trades WMON on the vault's behalf.
+        address wrappedNative = vm.envOr("KURU_WMON", address(0));
 
         (,, address base,, address quote,,,,,,) = IKuruOrderBook(orderbook).getMarketParams();
         console2.log("orderbook base ", base);
         console2.log("orderbook quote", quote);
-        // Kuru reports the native token as address(0). Custos moves ERC-20 only:
-        // the adapter approves and transfers, the vault measures balance deltas, and
-        // PriceOracle reads decimals(). Pick a market whose base is a contract.
-        require(base != address(0), "base is the native token, not an ERC-20 market");
+        require(base != address(0) || wrappedNative != address(0), "native market needs KURU_WMON");
         require(quote == usdc, "quote is not the accounting asset");
 
         vm.startBroadcast(deployerKey);
-        KuruMarketAdapter adapter = new KuruMarketAdapter(IKuruRouter(router), orderbook);
+        KuruMarketAdapter adapter = new KuruMarketAdapter(IKuruRouter(router), orderbook, wrappedNative);
         vm.stopBroadcast();
 
         _put("kuruRouter", router);
         _put("kuruOrderbook", orderbook);
         _put("market", address(adapter));
-        // `make init` reads `.market` and `.mon`; the base token is the one this
-        // market trades, so a PriceOracle feed is needed for it.
-        _put("mon", base);
+        // `make init` reads `.market` and `.mon`. Record what the vault will hold,
+        // which for a native market is the wrapped token, not the zero address.
+        _put("mon", adapter.baseToken());
 
         console2.log("KuruMarketAdapter", address(adapter));
+        console2.log("vault-facing base ", adapter.baseToken());
     }
 }

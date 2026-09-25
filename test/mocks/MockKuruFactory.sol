@@ -79,19 +79,7 @@ contract MockKuruFactory is IKuruFactory {
     function verifiedMarket(address market)
         external
         view
-        returns (
-            uint32,
-            uint96,
-            address,
-            uint256,
-            address,
-            uint256,
-            uint32,
-            uint96,
-            uint96,
-            uint256,
-            uint256
-        )
+        returns (uint32, uint96, address, uint256, address, uint256, uint32, uint96, uint96, uint256, uint256)
     {
         VerifiedMarket storage m = _verifiedMarket[market];
         return (

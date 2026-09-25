@@ -25,7 +25,7 @@ contract KuruAdapterTest is Base {
 
         router = new MockKuruRouter();
         orderbook = new MockKuruOrderBook(address(mon), address(usdc));
-        adapter = new KuruMarketAdapter(IKuruRouter(address(router)), address(orderbook));
+        adapter = new KuruMarketAdapter(IKuruRouter(address(router)), address(orderbook), address(0));
 
         router.setPrice(address(orderbook), 2 * USDC, 1 * MON);
         mon.mint(address(router), 1_000_000 * MON);
@@ -45,7 +45,8 @@ contract KuruAdapterTest is Base {
 
     function test_allowlistRejectsAdapterWithWrongQuote() public {
         MockKuruOrderBook flipped = new MockKuruOrderBook(address(usdc), address(mon));
-        KuruMarketAdapter wrong = new KuruMarketAdapter(IKuruRouter(address(router)), address(flipped));
+        KuruMarketAdapter wrong =
+            new KuruMarketAdapter(IKuruRouter(address(router)), address(flipped), address(0));
 
         vm.prank(authority);
         vm.expectRevert(MarketQuoteMismatch.selector);
@@ -112,6 +113,8 @@ contract KuruAdapterTest is Base {
         AgentVault(vault).executeSwap(address(adapter), true, uint128(400 * USDC), 0, 0);
 
         // H2: MON yang dibeli ikut dinilai (2 USD/MON lewat oracle), bukan hilang dari ledger.
-        assertEq(AgentVault(vault).totalAssets(), usdc.balanceOf(vault) + (mon.balanceOf(vault) * 2 * USDC) / MON);
+        assertEq(
+            AgentVault(vault).totalAssets(), usdc.balanceOf(vault) + (mon.balanceOf(vault) * 2 * USDC) / MON
+        );
     }
 }

@@ -5,9 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {AgentVault} from "../src/AgentVault.sol";
 import {Status} from "../src/Types.sol";
-import {
-    AgentCannotCallThis, MarketNotAllowed, VaultNotActive, ZeroAmount
-} from "../src/Errors.sol";
+import {AgentCannotCallThis, MarketNotAllowed, VaultNotActive, ZeroAmount} from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockMarket} from "./mocks/MockMarket.sol";
 import {MockCustosCore} from "./mocks/MockCustosCore.sol";
@@ -401,8 +399,20 @@ contract AgentVaultTest is Test {
 
     function test_circuitBreakerDisabledWhenZero() public {
         AgentVault noBreaker = new AgentVault(
-            keccak256("agent-no-breaker"), creator, agentWallet, custosCore, address(usdc), address(oracle),
-            address(0), 1000, 0, 7000, 10_000 * uint128(USDC), 30 days, "Custos: nb", "cst-nb"
+            keccak256("agent-no-breaker"),
+            creator,
+            agentWallet,
+            custosCore,
+            address(usdc),
+            address(oracle),
+            address(0),
+            1000,
+            0,
+            7000,
+            10_000 * uint128(USDC),
+            30 days,
+            "Custos: nb",
+            "cst-nb"
         );
         vm.prank(custosCore);
         noBreaker.setMarketAllowed(address(market), true);
@@ -463,9 +473,20 @@ contract AgentVaultTest is Test {
         buyAmount = bound(buyAmount, 1 * USDC, 9_000 * USDC);
 
         AgentVault v = new AgentVault(
-            keccak256(abi.encode("fuzz", drawdownBps, buyAmount)), creator, agentWallet, custosCore,
-            address(usdc), address(oracle), address(0), 1000, drawdownBps, 9500,
-            100_000 * uint128(USDC), 30 days, "Custos: f", "cst-f"
+            keccak256(abi.encode("fuzz", drawdownBps, buyAmount)),
+            creator,
+            agentWallet,
+            custosCore,
+            address(usdc),
+            address(oracle),
+            address(0),
+            1000,
+            drawdownBps,
+            9500,
+            100_000 * uint128(USDC),
+            30 days,
+            "Custos: f",
+            "cst-f"
         );
         vm.prank(custosCore);
         v.setMarketAllowed(address(market), true);

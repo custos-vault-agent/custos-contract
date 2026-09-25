@@ -28,7 +28,8 @@ contract DeployMockScript is DeploymentFile {
         address orderbook = kuruFactory.deployProxy(
             0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0
         );
-        KuruMarketAdapter market = new KuruMarketAdapter(IKuruRouter(address(kuruRouter)), orderbook);
+        KuruMarketAdapter market =
+            new KuruMarketAdapter(IKuruRouter(address(kuruRouter)), orderbook, address(0));
         kuruRouter.setPrice(orderbook, 2 * USDC, 1 * MON); // 1 MON = 2 USDC
         mon.mint(address(kuruRouter), 1_000_000 * MON);
         usdc.mint(address(kuruRouter), 1_000_000 * USDC);

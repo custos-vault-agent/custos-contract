@@ -22,18 +22,15 @@ contract KuruFactoryTest is Base {
     }
 
     function test_deployProxyRegistersMarketReadableByOrderbook() public {
-        address proxy = factory.deployProxy(0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0);
+        address proxy = factory.deployProxy(
+            0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0
+        );
 
         (
             uint32 pricePrecision,
             uint96 sizePrecision,
-            address baseAssetAddress,
-            ,
-            address quoteAssetAddress,
-            ,
-            ,
-            ,
-            ,
+            address baseAssetAddress,,
+            address quoteAssetAddress,,,,,
             uint256 takerFeeBps,
             uint256 makerFeeBps
         ) = factory.verifiedMarket(proxy);
@@ -49,8 +46,10 @@ contract KuruFactoryTest is Base {
     /// @notice Orderbook yang baru dideploy factory berperilaku sama seperti orderbook
     ///         listed lama begitu dibungkus adapter — agent bisa langsung swap di sana.
     function test_freshlyDeployedMarketTradesThroughAdapter() public {
-        address proxy = factory.deployProxy(0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0);
-        KuruMarketAdapter adapter = new KuruMarketAdapter(IKuruRouter(address(router)), proxy);
+        address proxy = factory.deployProxy(
+            0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0
+        );
+        KuruMarketAdapter adapter = new KuruMarketAdapter(IKuruRouter(address(router)), proxy, address(0));
 
         router.setPrice(proxy, 2 * USDC, 1 * MON);
         mon.mint(address(router), 1_000_000 * MON);

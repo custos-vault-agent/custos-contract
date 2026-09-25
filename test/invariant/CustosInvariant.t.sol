@@ -32,7 +32,8 @@ contract CustosInvariantTest is Test {
         custos = CustosCore(
             address(
                 new CustosProxy(
-                    address(new CustosCore()), abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
+                    address(new CustosCore()),
+                    abi.encodeCall(CustosCore.initialize, (authority, address(usdc)))
                 )
             )
         );

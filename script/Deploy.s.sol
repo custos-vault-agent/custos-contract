@@ -70,7 +70,8 @@ contract DeployScript is Script {
         address orderbook = kuruFactory.deployProxy(
             0, address(mon), address(usdc), 1e10, 1e2, 1, 1e6, type(uint96).max, 30, 10, 0
         );
-        KuruMarketAdapter market = new KuruMarketAdapter(IKuruRouter(address(kuruRouter)), orderbook);
+        KuruMarketAdapter market =
+            new KuruMarketAdapter(IKuruRouter(address(kuruRouter)), orderbook, address(0));
 
         // 1 MON = 2 USDC, same convention as test/Base.t.sol.
         kuruRouter.setPrice(orderbook, 2 * USDC, 1 * MON);
