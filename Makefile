@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: anvil build test abi deploy deployMock deployCore init upgrade upgradeCore addresses
+.PHONY: anvil build test abi deploy deployMock deployKuruAdapter deployCore init upgrade upgradeCore addresses
 
 anvil:
 	anvil
@@ -37,12 +37,18 @@ upgrade: build
 # key-nya sendiri di DEPLOYMENT_FILE (default deployments/anvil.json), jadi bisa
 # dicampur dengan alamat asli lewat env (USDC_ADDRESS, MON_USD_FEED, dst.).
 #   deployMock  → token/pasar/yield/feed palsu (skip kalau semua sudah ada)
+#   deployKuruAdapter → adapter untuk satu orderbook Kuru asli (ganti deployMock)
 #   deployCore  → CustosCore, NanSigil (unless given), VaultFactory, PriceOracle
 #   init        → konfigurasi upgradeAuthority; wajib sebelum registerAgent
 #   upgradeCore → implementation CustosCore baru ke proxy yang ada
 deployMock: build
 	mkdir -p deployments
 	forge script script/DeployMock.s.sol:DeployMockScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+# One adapter per real Kuru orderbook. Records it as `.market`, which `init` reads.
+deployKuruAdapter: build
+	mkdir -p deployments
+	forge script script/DeployKuruAdapter.s.sol:DeployKuruAdapterScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
 
 deployCore: build
 	mkdir -p deployments
