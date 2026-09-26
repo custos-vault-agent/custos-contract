@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: anvil build test abi deploy deployMock deployKuruAdapter deployCore init upgrade upgradeCore addresses
+.PHONY: anvil build test abi deploy deployMock deployKuruAdapter deployCore init upgrade upgradeCore addresses verify verifyVault
 
 anvil:
 	anvil
@@ -59,6 +59,20 @@ init: build
 
 upgradeCore: build
 	forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+# Verifies the deployed contracts on a block explorer. Addresses come from
+# DEPLOYMENT_FILE, constructor arguments from the chain. VERIFIER defaults to
+# sourcify, which needs no key; an Etherscan-style or Blockscout explorer needs
+# VERIFIER, VERIFIER_URL and usually VERIFIER_API_KEY. DRY_RUN=1 prints the
+# arguments and verifies nothing.
+verify: build
+	./script/verify.sh
+
+# One AgentVault. Pass ALLOWANCE and PERIOD from its AgentRegistered event when
+# the creator has changed them since registration.
+verifyVault: build
+	@test -n "$(VAULT)" || { echo "usage: make verifyVault VAULT=0x..."; exit 1; }
+	./script/verify.sh
 
 # Groups deployments/anvil.json's flat address fields by ABI'd contract name
 # (matching abi/*.json) and writes deployments/addresses.json, then prints a
