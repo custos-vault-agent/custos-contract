@@ -107,6 +107,20 @@ if [ -n "$ORACLE" ]; then
 			"$(call "$ORACLE" "quoteToken()(address)")")"
 fi
 
+# NanSigil lives in its own repo but is deployed from here, so its artifact and
+# its metadata come from this project. INIT_ATTESTOR is only needed when the
+# attestor has been rotated since the deployment.
+NANSIGIL=$(addr nansigil)
+NANSIGIL_IMPL=$(addr nansigilImplementation)
+verify "$NANSIGIL_IMPL" lib/nansigil-contract/src/NanSigil.sol:NanSigil
+if [ -n "$NANSIGIL" ] && [ -n "$NANSIGIL_IMPL" ]; then
+	NS_AUTH=${NANSIGIL_INIT_AUTHORITY:-$(call "$NANSIGIL" "upgradeAuthority()(address)")}
+	NS_ATT=${INIT_ATTESTOR:-$(call "$NANSIGIL" "attestor()(address)")}
+	NS_INIT=$(cast calldata "initialize(address,address)" "$NS_AUTH" "$NS_ATT")
+	verify "$NANSIGIL" lib/nansigil-contract/src/NanSigilProxy.sol:NanSigilProxy \
+		"$(cast abi-encode "constructor(address,bytes)" "$NANSIGIL_IMPL" "$NS_INIT")"
+fi
+
 # The adapter took KURU_WMON as its third argument, also for a market whose base
 # is already an ERC-20. The chain cannot tell those two cases apart, so this uses
 # the same environment value that deployKuruAdapter used.
