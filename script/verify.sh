@@ -26,16 +26,26 @@ num() { call "$1" "$2" | awk '{print $1}'; }
 str() { call "$1" "$2" | sed 's/^"//; s/"$//'; }
 addr() { jq -r --arg k "$1" '.[$k] // empty' "$FILE"; }
 
+FAILED=()
+
 # <address> <path:Name> [abi-encoded constructor args]
+# One explorer rejection must not hide the rest, so failures are collected.
 verify() {
 	if [ -z "$1" ]; then echo "skip $2: not in $FILE"; return; fi
 	echo "==> $2 at $1"
 	if [ -n "${DRY_RUN:-}" ]; then echo "    args ${3:-none}"; return; fi
 	if [ -n "${3:-}" ]; then
-		forge verify-contract "$1" "$2" --constructor-args "$3" "${FLAGS[@]}"
+		forge verify-contract "$1" "$2" --constructor-args "$3" "${FLAGS[@]}" || FAILED+=("$2")
 	else
-		forge verify-contract "$1" "$2" "${FLAGS[@]}"
+		forge verify-contract "$1" "$2" "${FLAGS[@]}" || FAILED+=("$2")
 	fi
+}
+
+summary() {
+	if [ ${#FAILED[@]} -eq 0 ]; then echo "done: every contract verified"; return 0; fi
+	echo "done, but these failed: ${FAILED[*]}"
+	echo "standard json for a manual upload: forge verify-contract <address> <path:Name> --show-standard-json-input"
+	return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -59,7 +69,8 @@ if [ -n "${VAULT:-}" ]; then
 		"${PERIOD:-$(num "$VAULT" "periodLength()(uint32)")}" \
 		"$(str "$VAULT" "name()(string)")" \
 		"$(str "$VAULT" "symbol()(string)")")"
-	exit 0
+	summary
+	exit $?
 fi
 
 test -f "$FILE" || { echo "$FILE not found"; exit 1; }
@@ -107,4 +118,4 @@ if [ -n "$MARKET" ]; then
 			"${KURU_WMON:-0x0000000000000000000000000000000000000000}")"
 fi
 
-echo "done"
+summary
