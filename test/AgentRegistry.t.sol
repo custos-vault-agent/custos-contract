@@ -14,6 +14,7 @@ import {
     MarketNotCurated,
     MarketQuoteMismatch,
     MarketStillHeld,
+    NoPriceFeed,
     NotCreator,
     NotUpgradeAuthority,
     SeedTooSmall,
@@ -434,17 +435,6 @@ contract AgentRegistryTest is Test {
         );
     }
 
-    function test_curatedMarketIsAllowedOnANewVault() public {
-        vm.prank(authority);
-        custos.setCuratedMarket(address(market), true);
-
-        AgentVault v = AgentVault(_register(agentWallet));
-        assertTrue(v.allowedMarkets(address(market)));
-        // One curated market means one iteration and one allowed market.
-        assertEq(custos.curatedMarkets().length, 1);
-        assertFalse(v.allowedMarkets(address(0xdead)));
-    }
-
     function test_withoutCurationANewVaultAllowsNothing() public {
         AgentVault v = AgentVault(_register(agentWallet));
         assertFalse(v.allowedMarkets(address(market)));
@@ -469,33 +459,6 @@ contract AgentRegistryTest is Test {
         vm.stopPrank();
     }
 
-    function test_uncuratingStopsNewVaultsButKeepsExistingOnes() public {
-        vm.prank(authority);
-        custos.setCuratedMarket(address(market), true);
-        AgentVault before = AgentVault(_register(agentWallet));
-
-        vm.prank(authority);
-        custos.setCuratedMarket(address(market), false);
-        AgentVault later = AgentVault(_register(makeAddr("agentWallet2")));
-
-        assertTrue(before.allowedMarkets(address(market)));
-        assertFalse(later.allowedMarkets(address(market)));
-        assertEq(custos.curatedMarkets().length, 0);
-    }
-
-    function test_aMarketWithoutAFeedIsSkippedInsteadOfBrickingRegistration() public {
-        MockERC20 other = new MockERC20("Other", "OTH", 18);
-        MockMarket unpriced = new MockMarket(address(other), address(usdc), 2 * USDC, 1e18);
-        vm.startPrank(authority);
-        custos.setCuratedMarket(address(market), true);
-        custos.setCuratedMarket(address(unpriced), true);
-        vm.stopPrank();
-
-        AgentVault v = AgentVault(_register(agentWallet));
-        assertTrue(v.allowedMarkets(address(market)));
-        assertFalse(v.allowedMarkets(address(unpriced)));
-    }
-
     function test_onlyAuthorityCurates() public {
         vm.prank(alice);
         vm.expectRevert(NotUpgradeAuthority.selector);
@@ -515,9 +478,7 @@ contract AgentRegistryTest is Test {
         AgentVault v = AgentVault(_register(agentWallet));
         // Read the id before pranking: a view call would consume the prank.
         bytes32 id = custos.agentAt(0);
-
-        vm.prank(authority);
-        custos.setMarketAllowed(id, address(market), false);
+        // Registration allows nothing; the creator opts in.
         assertFalse(v.allowedMarkets(address(market)));
 
         vm.prank(alice);
@@ -576,5 +537,48 @@ contract AgentRegistryTest is Test {
         vm.expectRevert(AgentAlreadyRevoked.selector);
         custos.setAgentMarket(id, address(market), true);
         vm.stopPrank();
+    }
+
+    function test_aNewVaultStartsWithNoMarket() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        AgentVault v = AgentVault(_register(agentWallet));
+        assertFalse(v.allowedMarkets(address(market)));
+    }
+
+    function test_uncuratingBlocksTheCreatorButKeepsWhatIsAllowed() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        AgentVault v = AgentVault(_register(agentWallet));
+        bytes32 id = custos.agentAt(0);
+
+        vm.prank(alice);
+        custos.setAgentMarket(id, address(market), true);
+
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), false);
+
+        // Already allowed on the vault, so trading continues.
+        assertTrue(v.allowedMarkets(address(market)));
+
+        _register(makeAddr("agentWallet2"));
+        bytes32 second = custos.agentAt(1);
+        vm.prank(alice);
+        vm.expectRevert(MarketNotCurated.selector);
+        custos.setAgentMarket(second, address(market), true);
+    }
+
+    function test_curatedMarketWithoutAFeedCannotBeEnabled() public {
+        MockERC20 other = new MockERC20("Other", "OTH", 18);
+        MockMarket unpriced = new MockMarket(address(other), address(usdc), 2 * USDC, 1e18);
+        vm.prank(authority);
+        custos.setCuratedMarket(address(unpriced), true);
+        _register(agentWallet);
+        bytes32 id = custos.agentAt(0);
+
+        // The vault refuses a base it cannot value (H2).
+        vm.prank(alice);
+        vm.expectRevert(NoPriceFeed.selector);
+        custos.setAgentMarket(id, address(unpriced), true);
     }
 }
