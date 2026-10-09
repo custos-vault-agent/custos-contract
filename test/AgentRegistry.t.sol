@@ -15,6 +15,10 @@ import {
     MarketQuoteMismatch,
     MarketStillHeld,
     NoPriceFeed,
+    SeedLocked,
+    AgentNotRevoked,
+    BaseStillHeld,
+    ZeroAmount,
     NotCreator,
     NotUpgradeAuthority,
     SeedTooSmall,
@@ -101,7 +105,7 @@ contract AgentRegistryTest is Test {
         assertEq(record.vault, vault);
     }
 
-    function test_seedDepositLockedAtDeadAddress() public {
+    function test_seedSplitsBetweenDustAndCreator() public {
         vm.prank(alice);
         (, address vault) = custos.registerAgent(
             bytes32("grid-bot"),
@@ -119,8 +123,12 @@ contract AgentRegistryTest is Test {
         );
 
         AgentVault v = AgentVault(vault);
-        assertEq(v.balanceOf(address(1)), 1_000 * uint128(USDC));
-        assertEq(v.totalAssets(), 1_000 * USDC);
+        uint256 seed = 1_000 * USDC;
+        // Only dust is unreachable; the rest is the creator's, and locked.
+        assertEq(v.balanceOf(address(1)), v.DEAD_SHARES());
+        assertEq(v.balanceOf(alice), seed - v.DEAD_SHARES());
+        assertEq(v.seedShares(), seed - v.DEAD_SHARES());
+        assertEq(v.totalAssets(), seed);
     }
 
     function test_seedBelowMinReverts() public {
@@ -642,5 +650,90 @@ contract AgentRegistryTest is Test {
         }
         vm.expectRevert(TooManyCuratedMarkets.selector);
         _registerWith(agentWallet, picked);
+    }
+
+    function _subscriber(address vault, uint256 amount) internal returns (address who) {
+        who = makeAddr("sub");
+        usdc.mint(who, amount);
+        vm.startPrank(who);
+        usdc.approve(vault, amount);
+        AgentVault(vault).deposit(amount, who);
+        vm.stopPrank();
+    }
+
+    function test_lockedSeedCannotLeaveTheCreator() public {
+        AgentVault v = AgentVault(_register(agentWallet));
+
+        vm.startPrank(alice);
+        vm.expectRevert(SeedLocked.selector);
+        v.transfer(makeAddr("elsewhere"), 1);
+        vm.expectRevert(SeedLocked.selector);
+        v.redeem(1, alice, alice);
+        vm.stopPrank();
+    }
+
+    function test_burnSeedLiftsTheSharePriceForSubscribers() public {
+        AgentVault v = AgentVault(_register(agentWallet));
+        bytes32 id = custos.agentAt(0);
+        address sub = _subscriber(address(v), 500 * USDC);
+        uint256 before = v.convertToAssets(v.balanceOf(sub));
+
+        vm.prank(alice);
+        custos.burnSeed(id, 100 * USDC);
+
+        assertGt(v.convertToAssets(v.balanceOf(sub)), before);
+        assertEq(v.seedShares(), 1_000 * USDC - v.DEAD_SHARES() - 100 * USDC);
+    }
+
+    function test_burnSeedIsCappedAndCreatorOnly() public {
+        AgentVault v = AgentVault(_register(agentWallet));
+        bytes32 id = custos.agentAt(0);
+
+        // Read the view before pranking: it would consume the prank.
+        uint256 tooMuch = v.seedShares() + 1;
+        vm.prank(alice);
+        vm.expectRevert(ZeroAmount.selector);
+        custos.burnSeed(id, tooMuch);
+
+        vm.prank(makeAddr("intruder"));
+        vm.expectRevert(NotCreator.selector);
+        custos.burnSeed(id, 1);
+    }
+
+    function test_seedIsReleasedOnlyAfterRevokeAndWithNoBaseHeld() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        address[] memory picked = new address[](1);
+        picked[0] = address(market);
+        AgentVault v = AgentVault(_registerWith(agentWallet, picked));
+        bytes32 id = custos.agentAt(0);
+
+        vm.prank(alice);
+        vm.expectRevert(AgentNotRevoked.selector);
+        custos.releaseSeed(id);
+
+        // A position nobody can sell any more would make the redemption fail.
+        mon.mint(address(v), 1e18);
+        vm.startPrank(alice);
+        custos.revokeAgent(id);
+        vm.expectRevert(BaseStillHeld.selector);
+        custos.releaseSeed(id);
+        vm.stopPrank();
+    }
+
+    function test_releasedSeedRedeemsLikeAnyShare() public {
+        AgentVault v = AgentVault(_register(agentWallet));
+        bytes32 id = custos.agentAt(0);
+        uint256 locked = v.seedShares();
+
+        vm.startPrank(alice);
+        custos.revokeAgent(id);
+        custos.releaseSeed(id);
+        assertEq(v.seedShares(), 0);
+        uint256 got = v.redeem(locked, alice, alice);
+        vm.stopPrank();
+
+        assertGt(got, 0);
+        assertEq(v.balanceOf(alice), 0);
     }
 }

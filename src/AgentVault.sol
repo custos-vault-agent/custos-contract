@@ -16,8 +16,12 @@ import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 import {IYieldSource} from "./interfaces/IYieldSource.sol";
 import {
     AgentCannotCallThis,
+    AgentNotRevoked,
     AllowanceExceeded,
+    BaseStillHeld,
     MarketNotAllowed,
+    SeedLocked,
+    SeedTooSmall,
     OnlyAgent,
     NoPriceFeed,
     OnlyCustosCore,
@@ -34,7 +38,9 @@ import {
     AgentPeriodRolled,
     CircuitBreakerTriggered,
     FeeMinted,
+    SeedBurned,
     SeedDeposited,
+    SeedReleased,
     SubscriberDeposited,
     SubscriberRedeemed,
     SwapExecuted,
@@ -55,6 +61,10 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /* ---------------------------- immutables ------------------------------ */
+
+    /// @dev Dust burned at `address(1)` forever, which is all the ERC-4626 inflation
+    ///      attack needs. The rest of the seed stays with the creator but is locked.
+    uint256 public constant DEAD_SHARES = 1000;
 
     address public immutable creator;
     address public immutable agent;
@@ -78,6 +88,8 @@ contract AgentVault is ERC4626, ReentrancyGuard {
 
     uint128 public allowance;
     uint128 public usedInPeriod;
+    /// @dev Seed shares still locked with the creator. Zero once released or burned.
+    uint256 public seedShares;
     uint64 public periodStart;
     uint32 public periodLength;
 
@@ -309,15 +321,51 @@ contract AgentVault is ERC4626, ReentrancyGuard {
         heldBases.push(base);
     }
 
-    /// @notice First deposit, called once by CustosCore right after deploy. Shares go
-    ///         to `address(1)` and are locked forever — the D15 defence against the
-    ///         ERC-4626 inflation attack, and the creator's skin in the game.
+    /// @notice First deposit, called once by CustosCore right after deploy. Dust goes to
+    ///         `address(1)` forever against the ERC-4626 inflation attack. The rest is
+    ///         the creator's, locked while the agent lives: they can burn it for the
+    ///         subscribers or take it back once the agent is revoked and flat.
     /// @dev Funds were already transferred by CustosCore; this only records them.
     function seedDeposit(uint128 amount) external onlyCustosCore {
         uint256 shares = amount; // initial price 1:1
-        _mint(address(1), shares);
+        if (shares <= DEAD_SHARES) revert SeedTooSmall();
+        seedShares = shares - DEAD_SHARES;
+        _mint(address(1), DEAD_SHARES);
+        _mint(creator, seedShares);
         _pushToYield();
         emit SeedDeposited(address(this), creator, amount, shares, address(1));
+    }
+
+    /// @notice Burns part of the locked seed, which raises the share price for every
+    ///         other holder. The creator's own way to make subscribers whole after a
+    ///         bad trade. It reaches only the holders present when it is called.
+    function burnSeed(uint256 shares) external onlyCustosCore {
+        if (shares == 0 || shares > seedShares) revert ZeroAmount();
+        // Lower the floor first, so `_update` lets this burn through.
+        seedShares -= shares;
+        _burn(creator, shares);
+        emit SeedBurned(address(this), creator, shares);
+    }
+
+    /// @notice Unlocks the remaining seed so the creator can redeem it like any holder.
+    /// @dev Revoked only, and only once the vault is back in the accounting asset, so
+    ///      the redemption cannot fail on a position nobody can sell any more.
+    function releaseSeed() external onlyCustosCore {
+        if (status != Status.Revoked) revert AgentNotRevoked();
+        uint256 n = heldBases.length;
+        for (uint256 i = 0; i < n; i++) {
+            if (IERC20(heldBases[i]).balanceOf(address(this)) != 0) revert BaseStillHeld();
+        }
+        uint256 released = seedShares;
+        seedShares = 0;
+        emit SeedReleased(address(this), creator, released);
+    }
+
+    /// @dev The locked seed cannot leave the creator, by transfer or by redemption.
+    ///      `burnSeed` and `releaseSeed` lower the floor before they move anything.
+    function _update(address from, address to, uint256 value) internal override {
+        if (from == creator && balanceOf(creator) - value < seedShares) revert SeedLocked();
+        super._update(from, to, value);
     }
 
     /* -------------------------- agent-facing: trading ------------------------ */

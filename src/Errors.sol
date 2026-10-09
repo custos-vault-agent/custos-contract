@@ -36,6 +36,9 @@ error TooManyCuratedMarkets();
 error MarketAlreadyCurated();
 error MarketNotCurated();
 error MarketStillHeld();
+error SeedLocked();
+error AgentNotRevoked();
+error BaseStillHeld();
 /// @dev H2: the market's base token has no feed in PriceOracle.
 error NoPriceFeed();
 error OracleQuoteMismatch();

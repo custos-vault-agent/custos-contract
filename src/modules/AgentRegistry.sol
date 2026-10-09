@@ -161,6 +161,22 @@ abstract contract AgentRegistry is AccessControl {
         AgentVault(a.vault).setAllowance(newAllowance);
     }
 
+    /// @notice Burns part of the creator's locked seed, which lifts the share price for
+    ///         everyone else. Voluntary: the creator decides whether a bad trade
+    ///         deserves it, and the burn is public.
+    function burnSeed(bytes32 id, uint256 shares) external {
+        AgentRecord storage a = _ownedAgent(id);
+        AgentVault(a.vault).burnSeed(shares);
+    }
+
+    /// @notice Unlocks the rest of the seed after the agent is revoked, so the creator
+    ///         can redeem it like any other holder. Subscribers can always redeem, so
+    ///         they are free to leave first.
+    function releaseSeed(bytes32 id) external {
+        AgentRecord storage a = _ownedAgent(id);
+        AgentVault(a.vault).releaseSeed();
+    }
+
     function setPeriod(bytes32 id, uint32 periodLength) external {
         AgentRecord storage a = _ownedAgent(id);
         emit AgentPeriodChanged(id, AgentVault(a.vault).periodLength(), periodLength);

@@ -84,6 +84,10 @@ event SeedDeposited(
     address indexed vault, address indexed creator, uint256 assets, uint256 shares, address deadAddress
 );
 
+event SeedBurned(address indexed vault, address indexed creator, uint256 shares);
+
+event SeedReleased(address indexed vault, address indexed creator, uint256 shares);
+
 event CircuitBreakerTriggered(
     address indexed vault, uint256 currentSharePrice, uint256 highWaterMark, uint16 maxDrawdownBps
 );
