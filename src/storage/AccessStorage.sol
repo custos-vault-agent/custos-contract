@@ -14,6 +14,9 @@ struct AccessLayout {
     mapping(address yieldSource => bool allowed) allowedYieldSources; // H1
     address vaultFactory; // standalone VaultFactory — AgentVault initcode is no longer in CustosCore
     address nansigil; // INanSigil: creator reputation, looked up by wallet
+    // Markets every new vault is allowed at registration. Capped, so the loop in
+    // registerAgent stays bounded.
+    address[] curatedMarkets;
 }
 
 library AccessStorage {

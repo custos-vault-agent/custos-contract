@@ -9,6 +9,8 @@ event MarketAdapterChanged(address indexed oldAdapter, address indexed newAdapte
 
 event MarketAllowedChanged(address indexed market, bool allowed);
 
+event CuratedMarketChanged(address indexed market, bool curated);
+
 event PausedChanged(bool paused);
 
 event MinSeedChanged(uint128 oldMinSeed, uint128 newMinSeed);

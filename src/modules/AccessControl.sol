@@ -6,9 +6,19 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {AccessLayout, AccessStorage} from "../storage/AccessStorage.sol";
+import {IMarket} from "../interfaces/IMarket.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
-import {NotUpgradeAuthority, OracleQuoteMismatch, Paused, ZeroAddress} from "../Errors.sol";
 import {
+    MarketAlreadyCurated,
+    MarketQuoteMismatch,
+    NotUpgradeAuthority,
+    OracleQuoteMismatch,
+    Paused,
+    TooManyCuratedMarkets,
+    ZeroAddress
+} from "../Errors.sol";
+import {
+    CuratedMarketChanged,
     MarketAdapterChanged,
     MinSeedChanged,
     NanSigilChanged,
@@ -25,6 +35,9 @@ import {
 ///      need no exception: Aurora Intents calls `AgentVault.deposit` from the user's own
 ///      intermediary account, like any other depositor.
 abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeable {
+    /// @dev Bounds the loop registerAgent runs over the curated list.
+    uint256 internal constant MAX_CURATED_MARKETS = 8;
+
     modifier onlyUpgradeAuthority() {
         if (msg.sender != AccessStorage.layout().upgradeAuthority) revert NotUpgradeAuthority();
         _;
@@ -55,6 +68,36 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
         AccessLayout storage $ = AccessStorage.layout();
         emit MarketAdapterChanged($.marketAdapter, adapter);
         $.marketAdapter = adapter;
+    }
+
+    /// @notice Markets that every vault is allowed at registration, so a new agent can
+    ///         trade without a follow-up transaction. Curation stays protocol-gated: a
+    ///         market is an arbitrary callee of `executeSwap`.
+    /// @dev The list is capped because `registerAgent` iterates it.
+    function setCuratedMarket(address market, bool curated) external onlyUpgradeAuthority {
+        AccessLayout storage $ = AccessStorage.layout();
+        address[] storage list = $.curatedMarkets;
+        uint256 n = list.length;
+
+        if (curated) {
+            if (market == address(0)) revert ZeroAddress();
+            // D4: the allowance model accounts notionals in the accounting asset.
+            if (IMarket(market).quoteToken() != $.accountingAsset) revert MarketQuoteMismatch();
+            for (uint256 i = 0; i < n; i++) {
+                if (list[i] == market) revert MarketAlreadyCurated();
+            }
+            if (n >= MAX_CURATED_MARKETS) revert TooManyCuratedMarkets();
+            list.push(market);
+        } else {
+            for (uint256 i = 0; i < n; i++) {
+                if (list[i] == market) {
+                    list[i] = list[n - 1];
+                    list.pop();
+                    break;
+                }
+            }
+        }
+        emit CuratedMarketChanged(market, curated);
     }
 
     function setMinSeed(uint128 amount) external onlyUpgradeAuthority {
@@ -138,6 +181,10 @@ abstract contract AccessControl is Initializable, ReentrancyGuard, UUPSUpgradeab
 
     function nansigil() external view returns (address) {
         return AccessStorage.layout().nansigil;
+    }
+
+    function curatedMarkets() external view returns (address[] memory) {
+        return AccessStorage.layout().curatedMarkets;
     }
 
     function isYieldSourceAllowed(address yieldSource) external view returns (bool) {

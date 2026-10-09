@@ -10,6 +10,7 @@ import {AgentRecord, Status} from "../Types.sol";
 import {RegistryLayout, RegistryStorage} from "../storage/RegistryStorage.sol";
 import {AgentVault} from "../AgentVault.sol";
 import {IMarket} from "../interfaces/IMarket.sol";
+import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {IVaultFactory} from "../interfaces/IVaultFactory.sol";
 import {INanSigil} from "nansigil-contract/interfaces/INanSigil.sol";
 import {
@@ -103,6 +104,19 @@ abstract contract AgentRegistry is AccessControl {
         // Transfer first, then have the vault record it.
         IERC20(access.accountingAsset).safeTransferFrom(msg.sender, vault, seedAmount);
         AgentVault(vault).seedDeposit(seedAmount);
+
+        // A fresh vault allows no market, so without this the agent could not trade
+        // until the upgrade authority sent a separate transaction. The list is capped
+        // at MAX_CURATED_MARKETS, and a market whose base lost its feed is skipped
+        // rather than reverting the whole registration.
+        address[] storage curated = access.curatedMarkets;
+        uint256 marketCount = curated.length;
+        for (uint256 i = 0; i < marketCount; i++) {
+            address market = curated[i];
+            if (IPriceOracle(access.priceOracle).hasFeed(IMarket(market).baseToken())) {
+                AgentVault(vault).setMarketAllowed(market, true);
+            }
+        }
 
         $.agents[id] = AgentRecord({
             name: name,

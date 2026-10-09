@@ -10,11 +10,13 @@ import {VaultFactory} from "../src/VaultFactory.sol";
 import {AgentRecord, Status} from "../src/Types.sol";
 import {
     AgentAlreadyRevoked,
+    MarketAlreadyCurated,
     MarketQuoteMismatch,
     NotCreator,
     NotUpgradeAuthority,
     SeedTooSmall,
     SelfDelegation,
+    TooManyCuratedMarkets,
     WalletAlreadyBound
 } from "../src/Errors.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -411,5 +413,97 @@ contract AgentRegistryTest is Test {
         vm.prank(alice);
         vm.expectRevert(NotUpgradeAuthority.selector);
         custos.setMarketAllowed(id, address(market), true);
+    }
+
+    function _register(address wallet) internal returns (address vault) {
+        vm.prank(alice);
+        (, vault) = custos.registerAgent(
+            bytes32("bot"),
+            "d",
+            wallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC)
+        );
+    }
+
+    function test_curatedMarketIsAllowedOnANewVault() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+
+        AgentVault v = AgentVault(_register(agentWallet));
+        assertTrue(v.allowedMarkets(address(market)));
+        // One curated market means one iteration and one allowed market.
+        assertEq(custos.curatedMarkets().length, 1);
+        assertFalse(v.allowedMarkets(address(0xdead)));
+    }
+
+    function test_withoutCurationANewVaultAllowsNothing() public {
+        AgentVault v = AgentVault(_register(agentWallet));
+        assertFalse(v.allowedMarkets(address(market)));
+    }
+
+    function test_curationIsCappedAndRejectsDuplicates() public {
+        vm.startPrank(authority);
+        for (uint256 i = 0; i < 8; i++) {
+            custos.setCuratedMarket(
+                address(new MockMarket(address(mon), address(usdc), 2 * USDC, 1e18)), true
+            );
+        }
+        assertEq(custos.curatedMarkets().length, 8);
+
+        MockMarket ninth = new MockMarket(address(mon), address(usdc), 2 * USDC, 1e18);
+        vm.expectRevert(TooManyCuratedMarkets.selector);
+        custos.setCuratedMarket(address(ninth), true);
+
+        address first = custos.curatedMarkets()[0];
+        vm.expectRevert(MarketAlreadyCurated.selector);
+        custos.setCuratedMarket(first, true);
+        vm.stopPrank();
+    }
+
+    function test_uncuratingStopsNewVaultsButKeepsExistingOnes() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        AgentVault before = AgentVault(_register(agentWallet));
+
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), false);
+        AgentVault later = AgentVault(_register(makeAddr("agentWallet2")));
+
+        assertTrue(before.allowedMarkets(address(market)));
+        assertFalse(later.allowedMarkets(address(market)));
+        assertEq(custos.curatedMarkets().length, 0);
+    }
+
+    function test_aMarketWithoutAFeedIsSkippedInsteadOfBrickingRegistration() public {
+        MockERC20 other = new MockERC20("Other", "OTH", 18);
+        MockMarket unpriced = new MockMarket(address(other), address(usdc), 2 * USDC, 1e18);
+        vm.startPrank(authority);
+        custos.setCuratedMarket(address(market), true);
+        custos.setCuratedMarket(address(unpriced), true);
+        vm.stopPrank();
+
+        AgentVault v = AgentVault(_register(agentWallet));
+        assertTrue(v.allowedMarkets(address(market)));
+        assertFalse(v.allowedMarkets(address(unpriced)));
+    }
+
+    function test_onlyAuthorityCurates() public {
+        vm.prank(alice);
+        vm.expectRevert(NotUpgradeAuthority.selector);
+        custos.setCuratedMarket(address(market), true);
+    }
+
+    function test_curationRejectsANonUsdcQuote() public {
+        MockMarket wrong = new MockMarket(address(usdc), address(mon), 2 * USDC, 1e18);
+        vm.prank(authority);
+        vm.expectRevert(MarketQuoteMismatch.selector);
+        custos.setCuratedMarket(address(wrong), true);
     }
 }

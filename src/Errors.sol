@@ -32,6 +32,8 @@ error VaultPausedOrRevoked();
 error AllowanceExceeded(uint256 headroom);
 error MarketNotAllowed();
 error MarketQuoteMismatch();
+error TooManyCuratedMarkets();
+error MarketAlreadyCurated();
 /// @dev H2: the market's base token has no feed in PriceOracle.
 error NoPriceFeed();
 error OracleQuoteMismatch();
