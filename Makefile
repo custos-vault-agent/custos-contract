@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: anvil build test abi deploy deployMock deployKuruAdapter deployCore init upgrade upgradeCore addresses verify verifyVault
+.PHONY: anvil build test abi deploy deployMock deployKuruAdapter deployCore init upgrade upgradeCore upgradeFactory addresses verify verifyVault
 
 anvil:
 	anvil
@@ -59,6 +59,11 @@ init: build
 
 upgradeCore: build
 	forge script script/Upgrade.s.sol:UpgradeScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
+
+# AgentVault's code is held by VaultFactory, so a vault change needs a new factory.
+# Existing vaults keep the code they were deployed with.
+upgradeFactory: build
+	forge script script/UpgradeFactory.s.sol:UpgradeFactoryScript --rpc-url $(RPC_URL) --broadcast --slow -vvvv
 
 # Verifies the deployed contracts on a block explorer. Addresses come from
 # DEPLOYMENT_FILE, constructor arguments from the chain. VERIFIER defaults to
