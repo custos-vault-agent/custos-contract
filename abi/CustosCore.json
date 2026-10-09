@@ -396,6 +396,11 @@
         "name": "seedAmount",
         "type": "uint128",
         "internalType": "uint128"
+      },
+      {
+        "name": "markets",
+        "type": "address[]",
+        "internalType": "address[]"
       }
     ],
     "outputs": [

@@ -130,7 +130,8 @@ contract DeployScript is Script {
                 address(yieldSource),
                 7000, // maxUtilizationBps 70%
                 true,
-                uint128(1_000 * USDC)
+                uint128(1_000 * USDC),
+                new address[](0)
             );
             agentIds[i] = id;
             vaults[i] = vault;

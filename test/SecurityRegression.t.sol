@@ -70,7 +70,8 @@ contract SecurityRegressionTest is Base {
             yieldSource,
             7000,
             true,
-            uint128(1_000 * USDC)
+            uint128(1_000 * USDC),
+            new address[](0)
         );
         vm.stopPrank();
     }
@@ -84,7 +85,18 @@ contract SecurityRegressionTest is Base {
         usdc.approve(address(custos), type(uint256).max);
         vm.expectRevert(YieldSourceNotAllowed.selector);
         custos.registerAgent(
-            bytes32("x"), "", agentWallet, 0, 0, 0, 0, address(rug), 5000, true, uint128(1_000 * USDC)
+            bytes32("x"),
+            "",
+            agentWallet,
+            0,
+            0,
+            0,
+            0,
+            address(rug),
+            5000,
+            true,
+            uint128(1_000 * USDC),
+            new address[](0)
         );
         vm.stopPrank();
     }
@@ -257,7 +269,9 @@ contract SecurityRegressionTest is Base {
         custos.setMinSeed(0);
         vm.prank(alice);
         vm.expectRevert(SeedTooSmall.selector);
-        custos.registerAgent(bytes32("x"), "", agentWallet, 0, 0, 0, 0, address(0), 5000, true, 0);
+        custos.registerAgent(
+            bytes32("x"), "", agentWallet, 0, 0, 0, 0, address(0), 5000, true, 0, new address[](0)
+        );
     }
 
     function test_L5_depositToAgentRejected() public {

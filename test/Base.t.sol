@@ -89,7 +89,8 @@ abstract contract Base is Test {
             address(0), // yieldSource disabled
             7000, // maxUtilizationBps 70%
             true, // isPublic
-            uint128(1_000 * USDC) // seedAmount
+            uint128(1_000 * USDC), // seedAmount
+            new address[](0)
         );
     }
 

@@ -82,7 +82,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         AgentVault v = AgentVault(vault);
@@ -113,7 +114,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         AgentVault v = AgentVault(vault);
@@ -135,7 +137,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1 * uint128(USDC)
+            1 * uint128(USDC),
+            new address[](0)
         );
     }
 
@@ -152,7 +155,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -168,7 +172,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
     }
 
@@ -186,7 +191,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
     }
 
@@ -203,7 +209,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -225,7 +232,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -247,7 +255,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -277,7 +286,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -299,7 +309,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -321,7 +332,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -343,7 +355,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(agentWallet);
@@ -364,7 +377,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(authority);
@@ -389,7 +403,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(authority);
@@ -410,7 +425,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
 
         vm.prank(alice);
@@ -431,7 +447,8 @@ contract AgentRegistryTest is Test {
             address(0),
             7000,
             true,
-            1_000 * uint128(USDC)
+            1_000 * uint128(USDC),
+            new address[](0)
         );
     }
 
@@ -580,5 +597,50 @@ contract AgentRegistryTest is Test {
         vm.prank(alice);
         vm.expectRevert(NoPriceFeed.selector);
         custos.setAgentMarket(id, address(unpriced), true);
+    }
+
+    function _registerWith(address wallet, address[] memory markets) internal returns (address vault) {
+        vm.prank(alice);
+        (, vault) = custos.registerAgent(
+            bytes32("bot"),
+            "d",
+            wallet,
+            4_000 * uint128(USDC),
+            1 days,
+            1000,
+            2000,
+            address(0),
+            7000,
+            true,
+            1_000 * uint128(USDC),
+            markets
+        );
+    }
+
+    function test_registrationAllowsThePickedMarketsInOneTransaction() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+
+        address[] memory picked = new address[](1);
+        picked[0] = address(market);
+        AgentVault v = AgentVault(_registerWith(agentWallet, picked));
+
+        assertTrue(v.allowedMarkets(address(market)));
+    }
+
+    function test_registrationRejectsAnUncuratedPick() public {
+        address[] memory picked = new address[](1);
+        picked[0] = address(market);
+        vm.expectRevert(MarketNotCurated.selector);
+        _registerWith(agentWallet, picked);
+    }
+
+    function test_registrationCapsThePickedMarkets() public {
+        address[] memory picked = new address[](9);
+        for (uint256 i = 0; i < 9; i++) {
+            picked[i] = address(uint160(i + 1));
+        }
+        vm.expectRevert(TooManyCuratedMarkets.selector);
+        _registerWith(agentWallet, picked);
     }
 }

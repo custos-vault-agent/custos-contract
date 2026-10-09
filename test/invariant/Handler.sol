@@ -100,7 +100,8 @@ contract Handler is CommonBase, StdCheats, StdUtils {
             address(0),
             util,
             true,
-            seedAmount
+            seedAmount,
+            new address[](0)
         );
         ids.push(id);
         hwmFloor[id] = 1e18;

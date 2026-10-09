@@ -38,7 +38,8 @@ contract IntegrationTest is Base {
             address(yieldSource),
             7000,
             true,
-            seedAmount
+            seedAmount,
+            new address[](0)
         );
 
         vm.prank(authority);

@@ -22,6 +22,7 @@ import {
     NotCreator,
     SeedTooSmall,
     SelfDelegation,
+    TooManyCuratedMarkets,
     UnknownAgent,
     UtilizationOutOfRange,
     WalletAlreadyBound,
@@ -46,6 +47,9 @@ abstract contract AgentRegistry is AccessControl {
 
     /// @param yieldSource `address(0)` disables idle yield for this vault (D22).
     /// @param seedAmount Must be `>= minSeed` (D15); locked forever at `address(1)`.
+    /// @param markets Curated markets to allow on the new vault, so one transaction
+    ///        leaves the agent able to trade. May be empty; the creator can add them
+    ///        later with `setAgentMarket`.
     /// @dev `nonReentrant` is load-bearing: `yieldSource` is caller-chosen and gets
     ///      called via `factory.deploy` -> `seedDeposit` -> `_pushToYield` before the
     ///      wallet binding below is written. Without the guard a malicious yield
@@ -62,7 +66,8 @@ abstract contract AgentRegistry is AccessControl {
         address yieldSource,
         uint16 maxUtilizationBps,
         bool isPublic,
-        uint128 seedAmount
+        uint128 seedAmount,
+        address[] calldata markets
     ) external nonReentrant whenNotPaused returns (bytes32 id, address vault) {
         if (wallet == address(0)) revert ZeroAddress();
         // A creator's own wallet as agent would be locked out of its own vault by
@@ -71,6 +76,7 @@ abstract contract AgentRegistry is AccessControl {
         if (feeRate > 5000) revert FeeRateOutOfRange();
         if (maxDrawdownBps > 5000) revert DrawdownOutOfRange();
         if (maxUtilizationBps < 1000 || maxUtilizationBps > 9500) revert UtilizationOutOfRange();
+        if (markets.length > MAX_CURATED_MARKETS) revert TooManyCuratedMarkets();
 
         AccessLayout storage access = AccessStorage.layout();
         // L1: a zero seed must never pass, even before minSeed is configured.
@@ -124,6 +130,15 @@ abstract contract AgentRegistry is AccessControl {
         emit AgentRegistered(
             id, msg.sender, wallet, vault, name, description, allowance, periodLength, feeRate, isPublic
         );
+
+        // After AgentRegistered, so a reader sees the agent before its markets. Only
+        // curated markets, so registration cannot smuggle in an arbitrary callee of
+        // executeSwap; the vault rejects a base with no price feed (H2).
+        for (uint256 i = 0; i < markets.length; i++) {
+            if (!_isCurated(markets[i])) revert MarketNotCurated();
+            AgentVault(vault).setMarketAllowed(markets[i], true);
+            emit AgentMarketChanged(id, markets[i], true);
+        }
     }
 
     function pauseAgent(bytes32 id) external {
