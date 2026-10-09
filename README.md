@@ -27,12 +27,12 @@ Two choices in this list are on purpose.
 
 | Role | Can do | Cannot do |
 |---|---|---|
-| Upgrade authority | Upgrade the core. Pause and unpause the protocol. Set the vault factory, the price oracle, the market adapter, NanSigil, and the minimum seed. Allow a yield source. Allow a market for one vault. Transfer its own role. | Touch a deployed vault directly. Change the accounting asset, which has no setter. |
-| Creator | Register an agent. Change the allowance and the period of its vault. Pause, resume, or revoke the agent. Set the marketplace visibility (`setPublic`). Earn the performance fee. | Withdraw subscriber funds. Move the seed. Change anything in the next list. |
+| Upgrade authority | Upgrade the core. Pause and unpause the protocol. Set the vault factory, the price oracle, the market adapter, NanSigil, and the minimum seed. Allow a yield source. Curate the protocol-wide market list (`setCuratedMarket`). Override the markets of one vault (`setMarketAllowed`). Transfer its own role. | Touch a deployed vault directly. Change the accounting asset, which has no setter. |
+| Creator | Register an agent. Change the allowance and the period of its vault. Pause, resume, or revoke the agent. Allow or disallow curated markets for its vault (`setAgentMarket`). Burn part of the seed (`burnSeed`), or unlock the rest after a revoke (`releaseSeed`). Set the marketplace visibility (`setPublic`). Earn the performance fee. | Withdraw subscriber funds. Move the seed in any other way. Allow a market that is not curated. Change anything in the next list. |
 | Agent wallet | Call `executeSwap` on its own vault, on an allowed market, inside the allowance. | Deposit, withdraw, redeem, transfer, or approve shares. The vault refuses all of these with `AgentCannotCallThis`. |
 | Subscriber | Deposit and mint. Redeem and withdraw at any time. | Nothing is gated by `isPublic`. That flag only controls the marketplace listing. |
 
-After registration the creator can change two values: the allowance and the period length. A change of the period starts a new period at once. The creator can also pause, resume, and revoke. A revoke is permanent.
+After registration the creator can change two values: the allowance and the period length. A change of the period starts a new period at once. The creator can also pause, resume, and revoke, and choose which curated markets the vault may trade. A revoke is permanent.
 
 Everything else is frozen for the life of the vault:
 
@@ -40,14 +40,18 @@ Everything else is frozen for the life of the vault:
 - the fee rate, `maxDrawdownBps`, and `maxUtilizationBps`
 - the yield source and the price oracle
 - the asset, which is the accounting asset of the core
-- the seed, which is locked at `address(1)`
+- the seed, except through `burnSeed` and `releaseSeed` (rule 2)
 
 Redeem and withdraw always work, also when the vault is paused or revoked.
 
 ## Rules of the vault
 
 1. **Agent binding.** A wallet can be the agent of one vault only. The binding is permanent, and a revoked agent keeps it. A creator cannot name its own wallet as the agent.
-2. **Seed.** `registerAgent` needs a seed of at least `minSeed`. The shares of the seed go to `address(1)` and stay there. This defends against the ERC-4626 inflation attack, and it puts the money of the creator at risk next to the money of the subscribers.
+2. **Seed.** `registerAgent` needs a seed of at least `minSeed`. `DEAD_SHARES` (1000 units) go to `address(1)` and stay there, which is all the ERC-4626 inflation attack needs. The rest goes to the creator and is locked: an `_update` override reverts `SeedLocked()` on any transfer or redeem of it, and `seedShares()` reports what is still locked. This puts the money of the creator at risk next to the money of the subscribers. The creator has two ways to move it, both through `CustosCore`:
+   - `burnSeed(id, shares)` works at any time, also while the agent is active. The burn raises the share price for every remaining holder, so it is the creator's way to make subscribers whole after a bad trade. It reaches only the holders in the vault when it is called, not anyone who already redeemed. It reverts `ZeroAmount()` on zero and `SeedExceeded()` above the locked amount, and emits `SeedBurned`.
+   - `releaseSeed(id)` needs a revoked agent (`AgentNotRevoked()`) and a vault that holds no base token of any market (`BaseStillHeld()`). It only unlocks. The creator then redeems through the normal ERC-4626 path. It emits `SeedReleased`.
+
+   Subscribers can always redeem, also after a revoke, so they are free to leave before the creator.
 3. **Allowance.** The agent can commit at most `allowance` of notional in each period. A buy counts its `amountIn`. A sell counts `maxNotional`, and the unused part returns to the allowance after the swap.
 4. **Utilization.** The cap is also `maxUtilizationBps` of `totalAssets`, from 10% to 95%. The smaller of the two limits applies, so some money is always available for redemptions.
 5. **Single-swap drawdown.** One swap that lowers the share price by more than `maxDrawdownBps` reverts.
@@ -55,7 +59,12 @@ Redeem and withdraw always work, also when the vault is paused or revoked.
 7. **Circuit breaker.** When the share price falls more than `maxDrawdownBps` below the high water mark, the vault pauses itself. The swap that tripped it still completes. After a breaker, `resume` resets the high water mark to the current price. After a manual pause, `resume` does not reset it, so a creator cannot lower the mark at will.
 8. **Idle yield.** If the vault has a yield source, idle USDC goes there after a deposit or a swap, and returns when a buy or a redemption needs it. A vault with `yieldSource == address(0)` is a pure trading vault. The yield source must be on the allowlist of the core at registration. The breaker skips the push, so funds stay idle after a trip.
 9. **Valuation.** `totalAssets` is the idle balance, plus the yield position, plus each held base token valued by `PriceOracle`. If the feed of a held token is stale, `totalAssets` reverts, and deposit, redeem, and swap stop until the feed recovers. The vault halts instead of pricing a position at an old value.
-10. **Markets.** A market must be allowed for the vault, its quote token must be the accounting asset, and its base token must have a feed in the oracle.
+10. **Markets.** `allowedMarkets` is per vault, and a new vault allows nothing. A market must be allowed for the vault, its quote token must be the accounting asset, and its base token must have a feed in the oracle. There are three ways to allow one:
+    - The authority keeps a protocol-wide list with `setCuratedMarket(market, bool)`. The quote must be the accounting asset, the list holds at most 8, and `curatedMarkets()` reads it.
+    - `registerAgent` takes the creator's picks as its last argument, `address[] markets`, and allows them in the same transaction. Each one must be curated.
+    - The creator changes them later with `setAgentMarket(id, market, bool)`. Enabling needs a curated market. Disabling needs a vault that holds none of the base of that market (`MarketStillHeld()`), because nothing else could sell that base back and redemptions would break.
+
+    `setMarketAllowed(id, market, bool)` stays as the override of the authority. It may allow a market outside the list, and it may revoke a compromised one even while a balance is held. All three emit `AgentMarketChanged(agentId, market, allowed)`.
 
 ## Commands
 
@@ -79,6 +88,7 @@ The staged path is for a real network such as Monad testnet. Each step writes it
 | `make init` | The upgrade authority sets the factory, the oracle, NanSigil, the market adapter, the minimum seed, the yield source allowlist, and the MON/USD feed. `registerAgent` reverts until this has run. It can run again safely. |
 | `make upgradeCore` | Deploys a new `CustosCore` implementation and upgrades the existing proxy to it. |
 | `make upgrade` | The same script as `upgradeCore`. |
+| `make upgradeFactory` | Deploys a new `VaultFactory` and calls `setVaultFactory` on the proxy. Use it, not `upgradeCore`, for a change to `AgentVault`, because the factory holds the vault code. Vaults that already exist are not proxies and keep their old code for good. If you skip this after a vault change, new vaults still get the old code, and nothing reports it. |
 | `make addresses` | Reads `deployments/anvil.json`, writes `deployments/addresses.json` grouped by contract name, and prints a `contracts:` block for an Envio `config.yaml`. |
 | `make verify` | Verifies the deployed contracts on an explorer. See the next section. |
 | `make verifyVault VAULT=0x...` | Verifies one `AgentVault`. |
@@ -110,7 +120,7 @@ Known failure: on an Etherscan-style explorer, `VaultFactory` reports a bytecode
 | CustosCore proxy | `0x8809926996F45505F17599fda8299d86bA3586af` | `0xd39e810EAE02E8247ec9308c936c5077dBAe2c46` |
 | NanSigil | `0x1421E6Acc7C7b3199077CD3b2A7d2A33778dfe9D` | `0xfF86D1b2fd3edaD27B361A9d004f3b6facb43621` |
 | USDC | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | `0x6f29bb72232770088E7d58b56d6A152354190A6e` (mock) |
-| VaultFactory | not listed | `0xa636d4241B9b46e96BC397bedB4F948AdEDA8373` |
+| VaultFactory | not listed | `0xC8cF6288d571f25a170d6D284367C32DFe0cf0b3` |
 | PriceOracle | not listed | `0x9b1C0B50d30c3108646dBEd717189594FF759734` |
 | Market adapter | not listed | `0xfd0275B71c22CC80a88729B989F680176dC0fa07` (mock market) |
 | MON | not listed | `0x898E658d0C7a9aBc1E138c45BEbA02Acc2F09B02` (mock) |
