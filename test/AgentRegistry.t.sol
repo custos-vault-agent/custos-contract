@@ -18,6 +18,7 @@ import {
     SeedLocked,
     AgentNotRevoked,
     BaseStillHeld,
+    SeedExceeded,
     ZeroAmount,
     NotCreator,
     NotUpgradeAuthority,
@@ -692,7 +693,7 @@ contract AgentRegistryTest is Test {
         // Read the view before pranking: it would consume the prank.
         uint256 tooMuch = v.seedShares() + 1;
         vm.prank(alice);
-        vm.expectRevert(ZeroAmount.selector);
+        vm.expectRevert(SeedExceeded.selector);
         custos.burnSeed(id, tooMuch);
 
         vm.prank(makeAddr("intruder"));

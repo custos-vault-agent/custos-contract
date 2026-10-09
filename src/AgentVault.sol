@@ -20,6 +20,7 @@ import {
     AllowanceExceeded,
     BaseStillHeld,
     MarketNotAllowed,
+    SeedExceeded,
     SeedLocked,
     SeedTooSmall,
     OnlyAgent,
@@ -340,7 +341,8 @@ contract AgentVault is ERC4626, ReentrancyGuard {
     ///         other holder. The creator's own way to make subscribers whole after a
     ///         bad trade. It reaches only the holders present when it is called.
     function burnSeed(uint256 shares) external onlyCustosCore {
-        if (shares == 0 || shares > seedShares) revert ZeroAmount();
+        if (shares == 0) revert ZeroAmount();
+        if (shares > seedShares) revert SeedExceeded();
         // Lower the floor first, so `_update` lets this burn through.
         seedShares -= shares;
         _burn(creator, shares);

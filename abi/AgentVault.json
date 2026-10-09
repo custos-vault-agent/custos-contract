@@ -1689,6 +1689,11 @@
   },
   {
     "type": "error",
+    "name": "SeedExceeded",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "SeedLocked",
     "inputs": []
   },
