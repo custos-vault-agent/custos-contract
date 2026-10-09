@@ -85,7 +85,7 @@ The staged path is for a real network such as Monad testnet. Each step writes it
 | `make deployMock` | Deploys a mock USDC, a mock MON, a mock Kuru market, a mock yield source, and a mock MON/USD feed. Writes their keys. It refuses to run outside chain 31337 and 10143. |
 | `make deployKuruAdapter` | Deploys one `KuruMarketAdapter` for a real Kuru orderbook and writes it as `market`. It replaces the mock market. Set `KURU_WMON` for a native market. |
 | `make deployCore` | Deploys the `CustosCore` implementation and proxy, `VaultFactory`, and `PriceOracle`. It also deploys NanSigil unless one is already set. Nothing is configured yet. |
-| `make init` | The upgrade authority sets the factory, the oracle, NanSigil, the market adapter, the minimum seed, the yield source allowlist, and the MON/USD feed. `registerAgent` reverts until this has run. It can run again safely. |
+| `make init` | The upgrade authority sets the factory, the oracle, NanSigil, the market adapter, the minimum seed, the yield source allowlist, and the MON/USD feed, and curates the market so a new agent can pick it. `registerAgent` reverts until this has run. It can run again safely. |
 | `make upgradeCore` | Deploys a new `CustosCore` implementation and upgrades the existing proxy to it. |
 | `make upgrade` | The same script as `upgradeCore`. |
 | `make upgradeFactory` | Deploys a new `VaultFactory` and calls `setVaultFactory` on the proxy. Use it, not `upgradeCore`, for a change to `AgentVault`, because the factory holds the vault code. Vaults that already exist are not proxies and keep their old code for good. If you skip this after a vault change, new vaults still get the old code, and nothing reports it. |
