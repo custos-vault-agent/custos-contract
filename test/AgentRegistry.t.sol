@@ -11,7 +11,9 @@ import {AgentRecord, Status} from "../src/Types.sol";
 import {
     AgentAlreadyRevoked,
     MarketAlreadyCurated,
+    MarketNotCurated,
     MarketQuoteMismatch,
+    MarketStillHeld,
     NotCreator,
     NotUpgradeAuthority,
     SeedTooSmall,
@@ -505,5 +507,74 @@ contract AgentRegistryTest is Test {
         vm.prank(authority);
         vm.expectRevert(MarketQuoteMismatch.selector);
         custos.setCuratedMarket(address(wrong), true);
+    }
+
+    function test_creatorPicksACuratedMarket() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        AgentVault v = AgentVault(_register(agentWallet));
+        // Read the id before pranking: a view call would consume the prank.
+        bytes32 id = custos.agentAt(0);
+
+        vm.prank(authority);
+        custos.setMarketAllowed(id, address(market), false);
+        assertFalse(v.allowedMarkets(address(market)));
+
+        vm.prank(alice);
+        custos.setAgentMarket(id, address(market), true);
+        assertTrue(v.allowedMarkets(address(market)));
+
+        vm.prank(alice);
+        custos.setAgentMarket(id, address(market), false);
+        assertFalse(v.allowedMarkets(address(market)));
+    }
+
+    function test_creatorCannotPickAnUncuratedMarket() public {
+        _register(agentWallet);
+        bytes32 id = custos.agentAt(0);
+        vm.prank(alice);
+        vm.expectRevert(MarketNotCurated.selector);
+        custos.setAgentMarket(id, address(market), true);
+    }
+
+    function test_onlyTheCreatorPicksMarkets() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        _register(agentWallet);
+        bytes32 id = custos.agentAt(0);
+
+        vm.prank(makeAddr("intruder"));
+        vm.expectRevert(NotCreator.selector);
+        custos.setAgentMarket(id, address(market), true);
+    }
+
+    function test_creatorCannotStrandAHeldBase() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        address vault = _register(agentWallet);
+        bytes32 id = custos.agentAt(0);
+        mon.mint(vault, 1e18);
+
+        vm.prank(alice);
+        vm.expectRevert(MarketStillHeld.selector);
+        custos.setAgentMarket(id, address(market), false);
+
+        // The authority keeps the emergency override.
+        vm.prank(authority);
+        custos.setMarketAllowed(id, address(market), false);
+        assertFalse(AgentVault(vault).allowedMarkets(address(market)));
+    }
+
+    function test_revokedAgentCannotChangeMarkets() public {
+        vm.prank(authority);
+        custos.setCuratedMarket(address(market), true);
+        _register(agentWallet);
+        bytes32 id = custos.agentAt(0);
+
+        vm.startPrank(alice);
+        custos.revokeAgent(id);
+        vm.expectRevert(AgentAlreadyRevoked.selector);
+        custos.setAgentMarket(id, address(market), true);
+        vm.stopPrank();
     }
 }

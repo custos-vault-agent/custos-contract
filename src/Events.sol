@@ -7,7 +7,7 @@ import {Status} from "./Types.sol";
 
 event MarketAdapterChanged(address indexed oldAdapter, address indexed newAdapter);
 
-event MarketAllowedChanged(address indexed market, bool allowed);
+event AgentMarketChanged(bytes32 indexed agentId, address indexed market, bool allowed);
 
 event CuratedMarketChanged(address indexed market, bool curated);
 

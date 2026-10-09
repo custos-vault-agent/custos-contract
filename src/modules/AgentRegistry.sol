@@ -17,7 +17,9 @@ import {
     AgentAlreadyRevoked,
     DrawdownOutOfRange,
     FeeRateOutOfRange,
+    MarketNotCurated,
     MarketQuoteMismatch,
+    MarketStillHeld,
     NotCreator,
     SeedTooSmall,
     SelfDelegation,
@@ -33,7 +35,7 @@ import {
     AgentPublicChanged,
     AgentRegistered,
     AgentStatusChanged,
-    MarketAllowedChanged
+    AgentMarketChanged
 } from "../Events.sol";
 
 /// @notice Agent registry. Metadata lives here; funds and trading live in each
@@ -172,9 +174,8 @@ abstract contract AgentRegistry is AccessControl {
         emit AgentPublicChanged(id, isPublic);
     }
 
-    /// @notice Allows or disallows a market for one vault. Protocol-gated: D4 (quote
-    ///         must be USDC) is a safety invariant of the allowance model, not a
-    ///         creator choice.
+    /// @notice The authority's override: it may allow a market that is not curated, and
+    ///         may revoke a compromised one even while the vault still holds its base.
     function setMarketAllowed(bytes32 id, address market, bool allowed) external onlyUpgradeAuthority {
         AgentRecord storage a = RegistryStorage.layout().agents[id];
         if (a.status == Status.None) revert UnknownAgent();
@@ -183,10 +184,38 @@ abstract contract AgentRegistry is AccessControl {
         }
         // H2: the vault itself rejects a market whose base has no feed (NoPriceFeed).
         AgentVault(a.vault).setMarketAllowed(market, allowed);
-        emit MarketAllowedChanged(market, allowed);
+        emit AgentMarketChanged(id, market, allowed);
+    }
+
+    /// @notice The creator picks which curated markets their own agent may trade.
+    /// @dev Curation stays with the authority because a market is an arbitrary callee
+    ///      of `executeSwap`; choosing among vetted ones is a creator decision.
+    function setAgentMarket(bytes32 id, address market, bool allowed) external {
+        AgentRecord storage a = _ownedAgent(id);
+        if (a.status == Status.Revoked) revert AgentAlreadyRevoked();
+
+        if (allowed) {
+            if (!_isCurated(market)) revert MarketNotCurated();
+        } else if (IERC20(IMarket(market).baseToken()).balanceOf(a.vault) != 0) {
+            // heldBases never shrinks and only this market can sell that base back to
+            // USDC, so disabling it here would strand the position and block redemptions.
+            revert MarketStillHeld();
+        }
+
+        AgentVault(a.vault).setMarketAllowed(market, allowed);
+        emit AgentMarketChanged(id, market, allowed);
     }
 
     /* ------------------------------ internal ----------------------------- */
+
+    function _isCurated(address market) internal view returns (bool) {
+        address[] storage curated = AccessStorage.layout().curatedMarkets;
+        uint256 n = curated.length;
+        for (uint256 i = 0; i < n; i++) {
+            if (curated[i] == market) return true;
+        }
+        return false;
+    }
 
     function _ownedAgent(bytes32 id) internal view returns (AgentRecord storage a) {
         a = RegistryStorage.layout().agents[id];
